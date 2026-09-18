@@ -1,5 +1,10 @@
 import { isNil } from "@oliversalzburg/js-utils/data/nil.js";
 import type { SupportedLocale } from "../Engine.js";
+import {
+	mostAggressivePriceRatio,
+	resolvePriceRatio,
+	spendsPreservedResource,
+} from "../helper/PriceBudget.js";
 import type { SettingOptions } from "../settings/Settings.js";
 import type {
 	FixCryochambersSettings,
@@ -11,7 +16,10 @@ import { objectEntries } from "../tools/Entries.js";
 import { cl } from "../tools/Log.js";
 import { parsePercentageEntry } from "../tools/Numbers.js";
 import { renderTrigger } from "../tools/TriggerValue.js";
-import { BuildSectionTools } from "./BuildSectionTools.js";
+import {
+	BuildSectionTools,
+	priceBudgetTitleSuffix,
+} from "./BuildSectionTools.js";
 import { CollapsiblePanel } from "./components/CollapsiblePanel.js";
 import { Dialog } from "./components/Dialog.js";
 import { HeaderListItem } from "./components/HeaderListItem.js";
@@ -35,6 +43,12 @@ export class TimeSettingsUi extends SettingsPanel<
 		console.debug(...cl(`Constructing ${TimeSettingsUi.name}`));
 
 		const label = parent.host.engine.i18n("ui.time");
+		const sectionPriceRatio = () =>
+			mostAggressivePriceRatio(parent.host, [
+				...parent.host.game.time.chronoforgeUpgrades,
+				...parent.host.game.time.voidspaceUpgrades,
+			]);
+
 		super(
 			parent,
 			settings,
@@ -56,7 +70,13 @@ export class TimeSettingsUi extends SettingsPanel<
 										locale.selected,
 										true,
 									),
-						]),
+						]) +
+							priceBudgetTitleSuffix(
+								parent.host,
+								settings.priceBudget,
+								sectionPriceRatio,
+								locale.selected,
+							),
 					);
 				},
 				onSetTrigger: async () => {
@@ -66,6 +86,7 @@ export class TimeSettingsUi extends SettingsPanel<
 						settings.priceBudget,
 						label,
 						locale,
+						sectionPriceRatio,
 					);
 				},
 				onUnCheck: (_isBatchProcess?: boolean) => {
@@ -276,6 +297,8 @@ export class TimeSettingsUi extends SettingsPanel<
 									building.unlocked ? "is unlocked" : "still locked",
 								].join("\n"),
 							},
+							() => resolvePriceRatio(this.host, building, "Time"),
+							() => spendsPreservedResource(building),
 						),
 					),
 
@@ -306,6 +329,8 @@ export class TimeSettingsUi extends SettingsPanel<
 									building.unlocked ? "is unlocked" : "still locked",
 								].join("\n"),
 							},
+							() => resolvePriceRatio(this.host, building, "Time"),
+							() => spendsPreservedResource(building),
 						),
 					),
 			]),

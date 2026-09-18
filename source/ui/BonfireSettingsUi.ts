@@ -1,12 +1,24 @@
 import { coalesceArray, isNil } from "@oliversalzburg/js-utils/data/nil.js";
 import type { SupportedLocale } from "../Engine.js";
+import {
+	mostAggressivePriceRatio,
+	resolvePriceRatio,
+	spendsPreservedResource,
+} from "../helper/PriceBudget.js";
 import { BonfireSettings } from "../settings/BonfireSettings.js";
 import type { SettingOptions } from "../settings/Settings.js";
 import { objectEntries } from "../tools/Entries.js";
 import { cl } from "../tools/Log.js";
-import type { Building, StagedBuilding } from "../types/index.js";
+import {
+	type Building,
+	Buildings,
+	type StagedBuilding,
+} from "../types/index.js";
 import { BuildingUpgradeSettingsUi } from "./BuildingUpgradeSettingsUi.js";
-import { BuildSectionTools } from "./BuildSectionTools.js";
+import {
+	BuildSectionTools,
+	priceBudgetTitleSuffix,
+} from "./BuildSectionTools.js";
 import { Delimiter } from "./components/Delimiter.js";
 import { HeaderListItem } from "./components/HeaderListItem.js";
 import { SettingListItem } from "./components/SettingListItem.js";
@@ -27,6 +39,18 @@ export class BonfireSettingsUi extends SettingsPanel<
 		console.debug(...cl(`Constructing ${BonfireSettingsUi.name}`));
 
 		const label = parent.host.engine.i18n("ui.build");
+		const sectionPriceRatio = () =>
+			mostAggressivePriceRatio(
+				parent.host,
+				objectEntries(settings.buildings)
+					.filter(([name]) => Buildings.includes(name as Building))
+					.map(
+						([name]) =>
+							parent.host.game.bld.getBuildingExt(name as Building).meta,
+					),
+				"Bonfire",
+			);
+
 		super(
 			parent,
 			settings,
@@ -44,7 +68,13 @@ export class BonfireSettingsUi extends SettingsPanel<
 										locale.selected,
 										true,
 									),
-						]),
+						]) +
+							priceBudgetTitleSuffix(
+								parent.host,
+								settings.priceBudget,
+								sectionPriceRatio,
+								locale.selected,
+							),
 					);
 				},
 				onSetTrigger: async () => {
@@ -58,6 +88,7 @@ export class BonfireSettingsUi extends SettingsPanel<
 						settings.priceBudget,
 						label,
 						locale,
+						sectionPriceRatio,
 					);
 				},
 				onUnCheck: (_isBatchProcess?: boolean) => {
@@ -231,6 +262,8 @@ export class BonfireSettingsUi extends SettingsPanel<
 							meta.stages[0].stageUnlocked ? "is unlocked" : "still locked",
 						].join("\n"),
 					},
+					() => resolvePriceRatio(parent.host, meta, "Bonfire"),
+					() => spendsPreservedResource(meta),
 				),
 				BuildSectionTools.getBuildOptionWithMax(
 					parent,
@@ -253,6 +286,8 @@ export class BonfireSettingsUi extends SettingsPanel<
 						].join("\n"),
 						upgradeIndicator: true,
 					},
+					() => resolvePriceRatio(parent.host, meta, "Bonfire"),
+					() => spendsPreservedResource(meta),
 				),
 			];
 		}
@@ -278,6 +313,8 @@ export class BonfireSettingsUi extends SettingsPanel<
 							meta.unlocked ? "is unlocked" : "still locked",
 						].join("\n"),
 					},
+					() => resolvePriceRatio(parent.host, meta, "Bonfire"),
+					() => spendsPreservedResource(meta),
 				),
 			];
 		}

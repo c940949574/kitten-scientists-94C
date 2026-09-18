@@ -1,10 +1,18 @@
 import { isNil } from "@oliversalzburg/js-utils/data/nil.js";
 import type { SupportedLocale } from "../Engine.js";
+import {
+	mostAggressivePriceRatio,
+	resolvePriceRatio,
+	spendsPreservedResource,
+} from "../helper/PriceBudget.js";
 import type { SettingOptions } from "../settings/Settings.js";
 import { SpaceSettings } from "../settings/SpaceSettings.js";
 import { objectEntries } from "../tools/Entries.js";
 import { cl } from "../tools/Log.js";
-import { BuildSectionTools } from "./BuildSectionTools.js";
+import {
+	BuildSectionTools,
+	priceBudgetTitleSuffix,
+} from "./BuildSectionTools.js";
 import { HeaderListItem } from "./components/HeaderListItem.js";
 import { SettingsList } from "./components/SettingsList.js";
 import { SettingsPanel } from "./components/SettingsPanel.js";
@@ -26,6 +34,12 @@ export class SpaceSettingsUi extends SettingsPanel<
 		console.debug(...cl(`Constructing ${SpaceSettingsUi.name}`));
 
 		const label = parent.host.engine.i18n("ui.space");
+		const sectionPriceRatio = () =>
+			mostAggressivePriceRatio(
+				parent.host,
+				parent.host.game.space.planets.flatMap((planet) => planet.buildings),
+			);
+
 		super(
 			parent,
 			settings,
@@ -43,7 +57,13 @@ export class SpaceSettingsUi extends SettingsPanel<
 										locale.selected,
 										true,
 									),
-						]),
+						]) +
+							priceBudgetTitleSuffix(
+								parent.host,
+								settings.priceBudget,
+								sectionPriceRatio,
+								locale.selected,
+							),
 					);
 				},
 				onSetTrigger: async () => {
@@ -53,6 +73,7 @@ export class SpaceSettingsUi extends SettingsPanel<
 						settings.priceBudget,
 						label,
 						locale,
+						sectionPriceRatio,
 					);
 				},
 				onUnCheck: (_isBatchProcess?: boolean) => {
@@ -123,6 +144,8 @@ export class SpaceSettingsUi extends SettingsPanel<
 											),
 										].join("\n"),
 									},
+									() => resolvePriceRatio(this.host, building, "Space"),
+									() => spendsPreservedResource(building),
 								),
 							),
 					]),

@@ -63,6 +63,7 @@ import type {
 	UnsafeVoidSpaceUpgradeButtonOptions,
 } from "../types/time.js";
 import type { WorkshopManager } from "../WorkshopManager.js";
+import { type PriceRatioData, resolvePriceRatio } from "./PriceBudget.js";
 
 export type BulkBuildListItem = {
 	count: number;
@@ -724,24 +725,7 @@ export class BulkPurchaseHelper {
 			| UnsafeZigguratUpgrade,
 		source?: TabId,
 	): number {
-		// If the building has stages, use the ratio for the current stage.
-		const ratio =
-			// TODO: This seems weird. Why not take the price ratio of the stage as the default?
-			this._isStagedBuild(data)
-				? data.priceRatio || data.stages[data.stage].priceRatio
-				: (data.priceRatio ?? 0);
-
-		let ratioDiff = 0;
-		if (source && source === "Bonfire") {
-			ratioDiff =
-				this._host.game.getEffect(`${data.name}PriceRatio` as const) +
-				this._host.game.getEffect("priceRatio") +
-				this._host.game.getEffect("mapPriceReduction");
-
-			ratioDiff = this._host.game.getLimitedDR(ratioDiff, ratio - 1);
-		}
-
-		return ratio + ratioDiff;
+		return resolvePriceRatio(this._host, data as PriceRatioData, source);
 	}
 
 	/**

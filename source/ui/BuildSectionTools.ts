@@ -1,4 +1,12 @@
 import type { SupportedLocale } from "../Engine.js";
+import {
+	budgetSpendShare,
+	ChronospheresForGrowth,
+	chronoSafeSpendShare,
+	chronoStasisShare,
+	chronosphereCount,
+} from "../helper/PriceBudget.js";
+import type { KittenScientists } from "../KittenScientists.js";
 import type {
 	SettingOptions,
 	SettingTrigger,
@@ -15,6 +23,184 @@ import {
 } from "./components/SettingTriggerListItem.js";
 import type { UiComponent } from "./components/UiComponent.js";
 
+export type ChronoWarning = {
+	/** The share of the spendable stock one cycle can burn through. */
+	share: number;
+	/** The share of the stock the chronospheres carry over. */
+	chrono: number;
+	/**
+	 * The share one cycle may spend while the run still ends up ahead.
+	 * `undefined` when the stock shrinks no matter what, because fewer than
+	 * `ChronospheresForGrowth` chronospheres are standing.
+	 */
+	allowance: number | undefined;
+};
+
+/**
+ * Determine whether a price budget lets a single cycle eat into what the
+ * chronospheres carry over into the next run.
+ *
+ * Chronospheres preserve `k` of what is left, so a cycle spending the share
+ * `f` hands the next run `k * (1 - f)` of the stock. The run only comes out
+ * ahead while that is above 100%, which caps the spend at `1 - 1/k`. Below 67
+ * chronospheres `k` never exceeds 100% and every cycle shrinks the stock, so
+ * the warning then reports that instead of an allowance.
+ *
+ * @param priceRatio The price modifier of the build in question.
+ * @param spendsPreserved Whether the build pays for anything a chronosphere
+ * would carry over. Builds that only cost crafted or luxury resources can't
+ * dent the next run, and are never warned about.
+ * @returns The warning, or `undefined` when none is warranted.
+ */
+const overChronoWarning = (
+	host: KittenScientists,
+	budget: number,
+	priceRatio?: () => number | undefined,
+	spendsPreserved?: () => boolean,
+): ChronoWarning | undefined => {
+	if (!priceRatio || !Number.isFinite(budget) || budget <= 0) {
+		return undefined;
+	}
+
+	// Without a chronosphere there is nothing to carry over, and a build that
+	// pays nothing the chronospheres preserve can't dent the next run either.
+	if (spendsPreserved && !spendsPreserved()) {
+		return undefined;
+	}
+
+	const ratio = priceRatio();
+	if (ratio === undefined) {
+		return undefined;
+	}
+
+	const share = budgetSpendShare(budget, ratio);
+	if (share === undefined) {
+		return undefined;
+	}
+
+	const chrono = chronoStasisShare(host);
+	if (chrono <= 0) {
+		return undefined;
+	}
+
+	const allowance = chronoSafeSpendShare(host);
+	if (allowance === undefined) {
+		return { allowance: undefined, chrono, share };
+	}
+
+	return share <= allowance ? undefined : { allowance, chrono, share };
+};
+
+/**
+ * The tooltip line a chronosphere warning contributes.
+ */
+const chronoWarningLine = (
+	host: KittenScientists,
+	warning: ChronoWarning,
+	locale?: SupportedLocale,
+): string => {
+	const percentage = (value: number) =>
+		host.renderPercentage(value, locale, true);
+
+	if (warning.allowance === undefined) {
+		return `\n${host.engine.i18n("ui.trigger.priceBudget.noGrowth", [
+			host.renderAbsolute(chronosphereCount(host)),
+			percentage(warning.chrono),
+			host.renderAbsolute(ChronospheresForGrowth),
+		])}`;
+	}
+
+	return `\n${host.engine.i18n("ui.trigger.priceBudget.warning", [
+		percentage(warning.share),
+		host.renderAbsolute(chronosphereCount(host)),
+		percentage(warning.chrono),
+		percentage(warning.allowance),
+	])}`;
+};
+
+/**
+ * Ask the user whether to keep a price budget that outspends what the
+ * chronospheres carry over.
+ *
+ * @returns Whether the budget should be kept. A `false` result means the
+ * caller must restore the previously stored budget.
+ */
+const confirmChronoWarning = async (
+	host: KittenScientists,
+	parent: UiComponent,
+	label: string,
+	warning: ChronoWarning,
+	locale?: SupportedLocale,
+): Promise<boolean> => {
+	const percentage = (value: number) =>
+		host.renderPercentage(value, locale, true);
+
+	const message =
+		warning.allowance === undefined
+			? host.engine.i18n("warn.priceBudget.noGrowth", [
+					label,
+					host.renderAbsolute(chronosphereCount(host)),
+					percentage(warning.chrono),
+					host.renderAbsolute(ChronospheresForGrowth),
+				])
+			: host.engine.i18n("warn.priceBudget.overChrono", [
+					label,
+					percentage(warning.share),
+					host.renderAbsolute(chronosphereCount(host)),
+					percentage(warning.chrono),
+					percentage(warning.allowance),
+				]);
+
+	return (
+		(await Dialog.confirm(
+			parent,
+			message,
+			host.engine.i18n("ui.trigger.priceBudget.confirmTitle"),
+			host.engine.i18n("ui.trigger.priceBudget.confirmExplainer"),
+		)) === "OK"
+	);
+};
+
+/**
+ * The tooltip lines a section's price budget contributes: the budget itself
+ * and, when the budget lets a cycle outspend the chronospheres, a warning.
+ *
+ * @returns The lines to append to a tooltip, or an empty string when the
+ * budget is off.
+ */
+export const priceBudgetTitleSuffix = (
+	host: KittenScientists,
+	budget: SettingTrigger | undefined,
+	priceRatio?: () => number | undefined,
+	locale?: SupportedLocale,
+	spendsPreserved?: () => boolean,
+): string => {
+	if (
+		!budget ||
+		!budget.enabled ||
+		!Number.isFinite(budget.trigger) ||
+		budget.trigger < 0
+	) {
+		return "";
+	}
+
+	let suffix = `\n${host.engine.i18n("ui.trigger.priceBudget.build.title", [
+		host.renderPercentage(budget.trigger, locale, true),
+	])}`;
+
+	const warning = overChronoWarning(
+		host,
+		budget.trigger,
+		priceRatio,
+		spendsPreserved,
+	);
+	if (warning) {
+		suffix += chronoWarningLine(host, warning, locale);
+	}
+
+	return suffix;
+};
+
 export const BuildSectionTools = {
 	/**
 	 * Prompt for a section's stock trigger and its price budget in one dialog.
@@ -28,6 +214,8 @@ export const BuildSectionTools = {
 		priceBudget: SettingTrigger,
 		label: string,
 		locale: SettingOptions<SupportedLocale>,
+		priceRatio?: () => number | undefined,
+		spendsPreserved?: () => boolean,
 	): Promise<boolean> => {
 		const host = parent.host;
 		const result = await Dialog.promptFields(
@@ -77,6 +265,9 @@ export const BuildSectionTools = {
 			return true;
 		}
 
+		const previousBudgetEnabled = priceBudget.enabled;
+		const previousBudgetTrigger = priceBudget.trigger;
+
 		const parsedBudget = host.parsePercentage(budgetValue);
 		if (parsedBudget === null) {
 			return true;
@@ -84,6 +275,27 @@ export const BuildSectionTools = {
 
 		priceBudget.enabled = true;
 		priceBudget.trigger = parsedBudget;
+
+		const warning = overChronoWarning(
+			host,
+			parsedBudget,
+			priceRatio,
+			spendsPreserved,
+		);
+		if (
+			warning &&
+			!(await confirmChronoWarning(
+				host,
+				parent,
+				label,
+				warning,
+				locale.selected,
+			))
+		) {
+			priceBudget.enabled = previousBudgetEnabled;
+			priceBudget.trigger = previousBudgetTrigger;
+		}
+
 		return true;
 	},
 
@@ -95,6 +307,8 @@ export const BuildSectionTools = {
 		label: string,
 		sectionLabel: string,
 		options?: Partial<SettingMaxTriggerListItemOptions>,
+		priceRatio?: () => number | undefined,
+		spendsPreserved?: () => boolean,
 	) => {
 		const onSetMax = async () => {
 			const value = await Dialog.prompt(
@@ -224,6 +438,9 @@ export const BuildSectionTools = {
 				return;
 			}
 
+			const previousBudgetEnabled = budgetSetting.enabled;
+			const previousBudgetTrigger = budgetSetting.trigger;
+
 			const parsedBudget = parent.host.parsePercentage(budgetValue);
 			if (parsedBudget === null) {
 				return;
@@ -231,6 +448,26 @@ export const BuildSectionTools = {
 
 			budgetSetting.enabled = true;
 			budgetSetting.trigger = parsedBudget;
+
+			const warning = overChronoWarning(
+				parent.host,
+				parsedBudget,
+				priceRatio,
+				spendsPreserved,
+			);
+			if (
+				warning &&
+				!(await confirmChronoWarning(
+					parent.host,
+					parent,
+					label,
+					warning,
+					locale.selected,
+				))
+			) {
+				budgetSetting.enabled = previousBudgetEnabled;
+				budgetSetting.trigger = previousBudgetTrigger;
+			}
 		};
 
 		const element = new SettingMaxTriggerListItem(
@@ -303,6 +540,20 @@ export const BuildSectionTools = {
 								),
 							],
 						)}`;
+
+						const warning = overChronoWarning(
+							parent.host,
+							budgetSetting.trigger,
+							priceRatio,
+							spendsPreserved,
+						);
+						if (warning) {
+							triggerTitle += chronoWarningLine(
+								parent.host,
+								warning,
+								locale.selected,
+							);
+						}
 					}
 
 					element.triggerButton.updateTitle(
@@ -333,6 +584,8 @@ export const BuildSectionTools = {
 		label: string,
 		sectionLabel: string,
 		options?: Partial<SettingTriggerListItemOptions>,
+		priceRatio?: () => number | undefined,
+		spendsPreserved?: () => boolean,
 	) => {
 		const element = new SettingTriggerListItem(parent, option, locale, label, {
 			delimiter: options?.delimiter,
@@ -350,20 +603,54 @@ export const BuildSectionTools = {
 					option.trigger === -1;
 			},
 			onRefreshTrigger: () => {
+				let triggerTitle =
+					option.trigger < 0
+						? sectionSetting.trigger < 0
+							? parent.host.engine.i18n("ui.trigger.build.blocked", [
+									sectionLabel,
+								])
+							: `${parent.host.renderPercentage(sectionSetting.trigger, locale.selected, true)} (${parent.host.engine.i18n("ui.trigger.build.inherited")})`
+						: parent.host.renderPercentage(
+								option.trigger,
+								locale.selected,
+								true,
+							);
+
+				const budget = option.priceBudget;
+				if (
+					budget &&
+					budget.enabled &&
+					Number.isFinite(budget.trigger) &&
+					0 <= budget.trigger
+				) {
+					triggerTitle += `\n${parent.host.engine.i18n(
+						"ui.trigger.priceBudget.build.title",
+						[
+							parent.host.renderPercentage(
+								budget.trigger,
+								locale.selected,
+								true,
+							),
+						],
+					)}`;
+
+					const warning = overChronoWarning(
+						parent.host,
+						budget.trigger,
+						priceRatio,
+						spendsPreserved,
+					);
+					if (warning) {
+						triggerTitle += chronoWarningLine(
+							parent.host,
+							warning,
+							locale.selected,
+						);
+					}
+				}
+
 				element.triggerButton.updateTitle(
-					parent.host.engine.i18n("ui.trigger", [
-						option.trigger < 0
-							? sectionSetting.trigger < 0
-								? parent.host.engine.i18n("ui.trigger.build.blocked", [
-										sectionLabel,
-									])
-								: `${parent.host.renderPercentage(sectionSetting.trigger, locale.selected, true)} (${parent.host.engine.i18n("ui.trigger.build.inherited")})`
-							: parent.host.renderPercentage(
-									option.trigger,
-									locale.selected,
-									true,
-								),
-					]),
+					parent.host.engine.i18n("ui.trigger", [triggerTitle]),
 				);
 			},
 			onSetTrigger: async () => {
@@ -462,6 +749,9 @@ export const BuildSectionTools = {
 					return;
 				}
 
+				const previousBudgetEnabled = budget.enabled;
+				const previousBudgetTrigger = budget.trigger;
+
 				const parsedBudget = parent.host.parsePercentage(budgetValue);
 				if (parsedBudget === null) {
 					return;
@@ -469,6 +759,27 @@ export const BuildSectionTools = {
 
 				budget.enabled = true;
 				budget.trigger = parsedBudget;
+
+				const warning = overChronoWarning(
+					parent.host,
+					parsedBudget,
+					priceRatio,
+					spendsPreserved,
+				);
+				if (
+					warning &&
+					!(await confirmChronoWarning(
+						parent.host,
+						parent,
+						label,
+						warning,
+						locale.selected,
+					))
+				) {
+					budget.enabled = previousBudgetEnabled;
+					budget.trigger = previousBudgetTrigger;
+				}
+
 				await options?.onSetTrigger?.call(this);
 			},
 			onUnCheck: (isBatchProcess?: boolean) => {

@@ -1,5 +1,10 @@
 import { isNil } from "@oliversalzburg/js-utils/data/nil.js";
 import type { SupportedLocale } from "../Engine.js";
+import {
+	mostAggressivePriceRatio,
+	resolvePriceRatio,
+	spendsPreservedResource,
+} from "../helper/PriceBudget.js";
 import { ReligionSettings } from "../settings/ReligionSettings.js";
 import type { SettingOptions } from "../settings/Settings.js";
 import { objectEntries } from "../tools/Entries.js";
@@ -9,7 +14,10 @@ import {
 	UnicornItems,
 	type ZigguratUpgrade,
 } from "../types/index.js";
-import { BuildSectionTools } from "./BuildSectionTools.js";
+import {
+	BuildSectionTools,
+	priceBudgetTitleSuffix,
+} from "./BuildSectionTools.js";
 import stylesButton from "./components/Button.module.css";
 import { Delimiter } from "./components/Delimiter.js";
 import { Dialog } from "./components/Dialog.js";
@@ -40,6 +48,13 @@ export class ReligionSettingsUi extends SettingsPanel<
 		console.debug(...cl(`Constructing ${ReligionSettingsUi.name}`));
 
 		const label = parent.host.engine.i18n("ui.faith");
+		const sectionPriceRatio = () =>
+			mostAggressivePriceRatio(parent.host, [
+				...parent.host.game.religion.zigguratUpgrades,
+				...parent.host.game.religion.religionUpgrades,
+				...parent.host.game.religion.transcendenceUpgrades,
+			]);
+
 		super(
 			parent,
 			settings,
@@ -57,7 +72,13 @@ export class ReligionSettingsUi extends SettingsPanel<
 										locale.selected,
 										true,
 									),
-						]),
+						]) +
+							priceBudgetTitleSuffix(
+								parent.host,
+								settings.priceBudget,
+								sectionPriceRatio,
+								locale.selected,
+							),
 					);
 				},
 				onSetTrigger: async () => {
@@ -67,6 +88,7 @@ export class ReligionSettingsUi extends SettingsPanel<
 						settings.priceBudget,
 						label,
 						locale,
+						sectionPriceRatio,
 					);
 				},
 				onUnCheck: (_isBatchProcess?: boolean) => {
@@ -152,6 +174,8 @@ export class ReligionSettingsUi extends SettingsPanel<
 							unicornPastureMeta.unlocked ? "is unlocked" : "still locked",
 						].join("\n"),
 					},
+					() => resolvePriceRatio(this.host, unicornPastureMeta, "Bonfire"),
+					() => spendsPreservedResource(unicornPastureMeta),
 				),
 			],
 			...this.host.game.religion.zigguratUpgrades
@@ -184,6 +208,8 @@ export class ReligionSettingsUi extends SettingsPanel<
 										zigguratUpgrade.unlocked ? "is unlocked" : "still locked",
 									].join("\n"),
 								},
+								() => resolvePriceRatio(this.host, zigguratUpgrade),
+								() => spendsPreservedResource(zigguratUpgrade),
 							),
 						] as [
 							ZigguratUpgrade | "unicornPasture",
@@ -261,6 +287,8 @@ export class ReligionSettingsUi extends SettingsPanel<
 									upgrade.unlocked ? "is unlocked" : "still locked",
 								].join("\n"),
 							},
+							() => resolvePriceRatio(this.host, upgrade),
+							() => spendsPreservedResource(upgrade),
 						),
 					),
 				new Delimiter(this),
@@ -302,6 +330,8 @@ export class ReligionSettingsUi extends SettingsPanel<
 									upgrade.unlocked ? "is unlocked" : "still locked",
 								].join("\n"),
 							},
+							() => resolvePriceRatio(this.host, upgrade),
+							() => spendsPreservedResource(upgrade),
 						);
 						// For those items that don't have a max button, ensure their trigger
 						// buttons are in alignment.
@@ -344,6 +374,8 @@ export class ReligionSettingsUi extends SettingsPanel<
 									upgrade.unlocked ? "is unlocked" : "still locked",
 								].join("\n"),
 							},
+							() => resolvePriceRatio(this.host, upgrade),
+							() => spendsPreservedResource(upgrade),
 						),
 					),
 			]),
