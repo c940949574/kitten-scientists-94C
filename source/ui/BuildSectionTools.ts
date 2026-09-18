@@ -1,10 +1,13 @@
 import type { SupportedLocale } from "../Engine.js";
+import { BulkPurchaseHelper } from "../helper/BulkPurchaseHelper.js";
 import {
 	budgetSpendShare,
 	ChronospheresForGrowth,
+	chronoGrowthRisk,
 	chronoSafeSpendShare,
 	chronoStasisShare,
 	chronosphereCount,
+	type PriceRatioData,
 	recommendedPriceBudget,
 } from "../helper/PriceBudget.js";
 import type { KittenScientists } from "../KittenScientists.js";
@@ -132,6 +135,7 @@ const confirmChronoWarning = async (
 	label: string,
 	warning: ChronoWarning,
 	locale?: SupportedLocale,
+	details?: string,
 ): Promise<boolean> => {
 	const percentage = (value: number) =>
 		host.renderPercentage(value, locale, true);
@@ -152,14 +156,31 @@ const confirmChronoWarning = async (
 					percentage(warning.allowance),
 				]);
 
-	return (
+	const confirmed =
 		(await Dialog.confirm(
 			parent,
 			message,
 			host.engine.i18n("ui.trigger.priceBudget.confirmTitle"),
 			host.engine.i18n("ui.trigger.priceBudget.confirmExplainer"),
-		)) === "OK"
-	);
+		)) === "OK";
+
+	if (confirmed) {
+		// The player chose to keep an over-the-line budget: hold automated
+		// builds for a few seconds and say so in the message log, so they
+		// get a moment to pause automation or lower the budget. When we
+		// know which resources blow the budget, name them.
+		BulkPurchaseHelper.pauseBuilds(5);
+		if (details) {
+			host.engine.imessage("warn.priceBudget.cooldown.detail", [
+				label,
+				details,
+			]);
+		} else {
+			host.engine.imessage("warn.priceBudget.cooldown", [label]);
+		}
+	}
+
+	return confirmed;
 };
 
 /**
@@ -336,6 +357,7 @@ export const BuildSectionTools = {
 		options?: Partial<SettingMaxTriggerListItemOptions>,
 		priceRatio?: () => number | undefined,
 		spendsPreserved?: () => boolean,
+		priceData?: () => PriceRatioData,
 	) => {
 		const onSetMax = async () => {
 			const value = await Dialog.prompt(
@@ -477,12 +499,23 @@ export const BuildSectionTools = {
 			budgetSetting.enabled = true;
 			budgetSetting.trigger = parsedBudget;
 
-			const warning = overChronoWarning(
-				parent.host,
-				parsedBudget,
-				priceRatio,
-				spendsPreserved,
-			);
+			// Actual growth risk: honors the real stock, the per-unit budget
+			// veto chain, and the build's max — not just the theoretical
+			// budget × r ÷ (r − 1) ceiling, which grossly overestimates
+			// consumption when stockpiles dwarf unit prices.
+			const data = priceData?.();
+			const maxRemaining =
+				data && option.max >= 0 && typeof data.val === "number"
+					? Math.max(0, option.max - data.val)
+					: undefined;
+			const warning = data
+				? chronoGrowthRisk(parent.host, data, parsedBudget, maxRemaining)
+				: overChronoWarning(
+						parent.host,
+						parsedBudget,
+						priceRatio,
+						spendsPreserved,
+					);
 			if (
 				warning &&
 				!(await confirmChronoWarning(
@@ -614,6 +647,7 @@ export const BuildSectionTools = {
 		options?: Partial<SettingTriggerListItemOptions>,
 		priceRatio?: () => number | undefined,
 		spendsPreserved?: () => boolean,
+		priceData?: () => PriceRatioData,
 	) => {
 		const element = new SettingTriggerListItem(parent, option, locale, label, {
 			delimiter: options?.delimiter,
@@ -789,12 +823,21 @@ export const BuildSectionTools = {
 				budget.enabled = true;
 				budget.trigger = parsedBudget;
 
-				const warning = overChronoWarning(
-					parent.host,
-					parsedBudget,
-					priceRatio,
-					spendsPreserved,
-				);
+				// Actual growth risk, same as above: real stock, budget veto
+				// chain, and the build's max.
+				const data = priceData?.();
+				const maxRemaining =
+					data && option.max >= 0 && typeof data.val === "number"
+						? Math.max(0, option.max - data.val)
+						: undefined;
+				const warning = data
+					? chronoGrowthRisk(parent.host, data, parsedBudget, maxRemaining)
+					: overChronoWarning(
+							parent.host,
+							parsedBudget,
+							priceRatio,
+							spendsPreserved,
+						);
 				if (
 					warning &&
 					!(await confirmChronoWarning(

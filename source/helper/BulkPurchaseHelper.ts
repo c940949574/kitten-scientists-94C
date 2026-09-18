@@ -111,6 +111,28 @@ export class BulkPurchaseHelper {
 	cacheHits = 0;
 	cacheMisses = 0;
 
+	/**
+	 * Timestamp until which automated builds stay paused, shared by every
+	 * section's helper. Set when a player confirms a price budget above the
+	 * growth line, so they get a moment to react before builds kick in.
+	 */
+	private static _buildCooldownUntil = 0;
+
+	/**
+	 * Pause automated builds for the given number of seconds, across all
+	 * sections.
+	 */
+	static pauseBuilds(seconds: number): void {
+		BulkPurchaseHelper._buildCooldownUntil = Math.max(
+			BulkPurchaseHelper._buildCooldownUntil,
+			Date.now() + seconds * 1000,
+		);
+	}
+
+	private static _buildsPaused(): boolean {
+		return Date.now() < BulkPurchaseHelper._buildCooldownUntil;
+	}
+
 	constructor(host: KittenScientists, workshopManager: WorkshopManager) {
 		this._host = host;
 		this._workshopManager = workshopManager;
@@ -312,6 +334,14 @@ export class BulkPurchaseHelper {
 		>,
 	): Array<ConcreteBuild> {
 		const buildDrafts: Array<ConcreteBuild> = [];
+
+		// A price budget above the growth line was just confirmed; give the
+		// player a few seconds to react (pause automation, lower the budget)
+		// before builds kick in.
+		if (BulkPurchaseHelper._buildsPaused()) {
+			return buildDrafts;
+		}
+
 		const buildsSorted = objectEntries(builds).sort((a, b) => {
 			const aMeta = metaData[a[0]] ?? { val: 0 };
 			const bMeta = metaData[b[0]] ?? { val: 0 };
@@ -597,8 +627,14 @@ export class BulkPurchaseHelper {
 			// The price budget applies to *every* unit in the chain, not only
 			// the first one. Without this, a single tick could devour the
 			// entire spendable stock once the first unit passed the gate.
+			// Crafted and luxury resources are exempt — same rule as
+			// `_isOverBudget`: the budget only vets resources the
+			// chronospheres carry over.
 			if (!maxItemsBuilt && budgetActive) {
 				for (let priceIndex = 0; priceIndex < prices.length; priceIndex++) {
+					if (!isPreservedResource(prices[priceIndex].name)) {
+						continue;
+					}
 					const reference = budgetPool[prices[priceIndex].name];
 					// An unknown or broken resource reference must not veto
 					// the build; only a definitive overshoot stops the chain.
@@ -801,9 +837,9 @@ export class BulkPurchaseHelper {
 		currentValue: number,
 		pool: Readonly<Record<Resource, number>>,
 		budget: number | undefined,
-	): boolean {
+	): string | undefined {
 		if (budget === undefined || budget < 0) {
-			return false;
+			return undefined;
 		}
 
 		const prices = this._getPriceForBuild(build, currentValue);
@@ -824,11 +860,16 @@ export class BulkPurchaseHelper {
 			}
 
 			if (spendable * budget < price.val) {
-				return true;
+				const resource = this._workshopManager.getResource(price.name);
+				const title =
+					(resource as { title?: string } | undefined)?.title ?? price.name;
+				return `${title} ${this._host.game.getDisplayValueExt(
+					price.val,
+				)} > 预算上限 ${this._host.game.getDisplayValueExt(spendable * budget)}`;
 			}
 		}
 
-		return false;
+		return undefined;
 	}
 
 	/**

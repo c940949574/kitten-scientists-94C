@@ -306,3 +306,110 @@ export const recommendedPriceBudget = (
 		chronos: chronosphereCount(host),
 	};
 };
+
+const fmtShare = (share: number): string => {
+	const pct = share * 100;
+	if (pct >= 1) {
+		return `${Math.round(pct)}%`;
+	}
+	if (pct >= 0.01) {
+		return `${pct.toFixed(2)}%`;
+	}
+	if (pct > 0) {
+		return `${pct.toPrecision(2)}%`;
+	}
+	return "0%";
+};
+
+export type GrowthRisk = {
+	share: number;
+	chrono: number;
+	allowance: number | undefined;
+	details: string | undefined;
+};
+
+/**
+ * Estimate how much of the stock one automated cycle would actually burn for
+ * this build, honoring the price budget (per-unit veto), the build's max,
+ * and each resource's real stock — then compare it against what the
+ * chronospheres carry over.
+ *
+ * The theoretical model (`budget × r ÷ (r − 1)`) is only reached when the
+ * chain is long enough for the budget to bind. With huge stockpiles and a
+ * small `max`, actual consumption can be orders of magnitude below it, and
+ * a warning based on the model alone would be pure noise.
+ *
+ * @returns The worst-resource actual share with a per-resource breakdown,
+ * or `undefined` when the cycle stays within the growth line (or when
+ * growth is impossible regardless — fewer than `ChronospheresForGrowth`
+ * chronospheres, reported with `allowance: undefined`).
+ */
+export const chronoGrowthRisk = (
+	host: KittenScientists,
+	data: PriceRatioData,
+	budget: number,
+	maxRemaining: number | undefined,
+	source?: TabId,
+): GrowthRisk | undefined => {
+	const chrono = chronoStasisShare(host);
+	if (chrono <= 0) {
+		return undefined;
+	}
+	const allowance = 1 < chrono ? 1 - 1 / chrono : undefined;
+
+	if (allowance === undefined) {
+		// Fewer than ChronospheresForGrowth: the stock shrinks no matter how
+		// thrifty the budget is.
+		return { share: 1, chrono, allowance: undefined, details: undefined };
+	}
+
+	const ratio = resolvePriceRatio(host, data, source);
+	if (!Number.isFinite(ratio) || ratio <= 1) {
+		return undefined;
+	}
+
+	let worst = 0;
+	const over: Array<string> = [];
+	const rest: Array<string> = [];
+	for (const price of collectPrices(data)) {
+		const resource = host.engine.workshopManager.getResource(price.name);
+		const stock = resource?.value ?? 0;
+		const preserved = isPreservedResource(price.name);
+
+		let share = 0;
+		if (preserved && 0 < stock && 0 < price.val) {
+			// Chain length under the per-unit budget veto: units cost
+			// p₀·rⁱ, and the veto stops at the first unit above
+			// stock × budget.
+			const cap = stock * budget;
+			let chain =
+				price.val < cap
+					? Math.floor(Math.log(cap / price.val) / Math.log(ratio))
+					: 0;
+			if (maxRemaining !== undefined) {
+				chain = Math.min(chain, maxRemaining);
+			}
+			share = Math.min(
+				1,
+				(price.val * (ratio ** chain - 1)) / ((ratio - 1) * stock),
+			);
+		}
+		if (preserved) {
+			worst = Math.max(worst, share);
+		}
+		const title = (resource as { title?: string } | undefined)?.title;
+		const text = `${title ?? price.name} ${fmtShare(share)}${preserved ? "" : "*"}`;
+		(preserved ? over : rest).push(text);
+	}
+
+	if (worst <= allowance) {
+		return undefined;
+	}
+
+	return {
+		share: worst,
+		chrono,
+		allowance,
+		details: [...over, ...rest].join("、"),
+	};
+};
