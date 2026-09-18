@@ -41,8 +41,9 @@
 |---|---|---|
 | 40 | 60% | 无（怎么省都在缩水）|
 | 67 | 100.5% | 0.50% |
+| 80 | 120% | 16.67% |
 | 100 | 150% | 33.33% |
-| 200 | 300% | 66.67% |
+| 120 | 180% | 44.44% |
 
 座数不足 67 时提示「当前带回 k%，需 67 座才会增长」，不做额度告警。告警只统计超时空会带回的 19 种非制作、非奢侈资源（catnip、wood、minerals、coal、iron、titanium、gold、oil、uranium、unobtainium、antimatter、catpower、science、culture、faith、starchart、relic、void、blackcoin）；奢侈品永不保留，制作品需 Flux Condensator 且按 `sqrt(X) × 1.5 × N` 计算，都不计入。
 
