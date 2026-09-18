@@ -14,6 +14,7 @@ import { SettingListItem } from "./components/SettingListItem.js";
 import stylesSettingListItem from "./components/SettingListItem.module.css";
 import { SettingsList } from "./components/SettingsList.js";
 import { SettingsPanel } from "./components/SettingsPanel.js";
+import { SettingTriggerListItem } from "./components/SettingTriggerListItem.js";
 import { TextButton } from "./components/TextButton.js";
 import { TextListItem } from "./components/TextListItem.js";
 import type { UiComponent } from "./components/UiComponent.js";
@@ -110,6 +111,43 @@ export class InternalsUi extends SettingsPanel<EngineSettings> {
 					parent,
 					settings.highlighStock,
 					parent.host.engine.i18n("ui.highlightStock"),
+				),
+				new SettingTriggerListItem(
+					parent,
+					settings.stockReserve,
+					locale,
+					parent.host.engine.i18n("ui.stockReserve"),
+					{
+						onSetTrigger: async () => {
+							const value = await Dialog.prompt(
+								parent,
+								parent.host.engine.i18n("ui.stockReserve.promptExplainer"),
+								parent.host.engine.i18n("ui.stockReserve.prompt"),
+								settings.stockReserve.trigger !== -1
+									? parent.host.renderPercentage(settings.stockReserve.trigger)
+									: "",
+								parent.host.engine.i18n("ui.stockReserve.explainer"),
+							);
+
+							if (value === undefined) {
+								return;
+							}
+
+							if (value === "" || value.startsWith("-")) {
+								settings.stockReserve.enabled = false;
+								settings.stockReserve.trigger = -1;
+								return;
+							}
+
+							const parsed = parent.host.parsePercentage(value);
+							if (parsed === null) {
+								return;
+							}
+
+							settings.stockReserve.enabled = true;
+							settings.stockReserve.trigger = parsed;
+						},
+					},
 				),
 				new Delimiter(parent),
 

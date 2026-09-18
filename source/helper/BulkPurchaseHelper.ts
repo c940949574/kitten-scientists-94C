@@ -278,6 +278,7 @@ export class BulkPurchaseHelper {
 					max: number;
 					baseBuilding?: Building;
 					building?: AllBuildings | BonfireItem;
+					priceBudget?: number;
 					stage?: number;
 					trigger: number;
 					sectionTrigger: number;
@@ -310,6 +311,11 @@ export class BulkPurchaseHelper {
 			}
 			return a[0].localeCompare(b[0], "en");
 		});
+
+		// Determine what the automated builds are allowed to spend. This is the
+		// currently available amount, minus the configured stock reserve.
+		// We need a copy, because `_precalculateBuilds` modifies this data.
+		const currentResourcePool = this._getSpendableResources();
 
 		for (const [name, build] of buildsSorted) {
 			// If the build is disabled, skip it.
@@ -388,7 +394,18 @@ export class BulkPurchaseHelper {
 					(material) => material.value / material.maxValue < trigger,
 				).length === 0;
 
-			if (allMaterialsAboveTrigger) {
+			if (
+				allMaterialsAboveTrigger &&
+				// The stock trigger only looks at what we hold right now. It says
+				// nothing about what a single unit costs, and prices grow with
+				// every unit we already own.
+				!this._isOverBudget(
+					name,
+					buildMetaData.val,
+					currentResourcePool,
+					build.priceBudget,
+				)
+			) {
 				// Create an entry in the cache list for the bulk processing.
 				buildDrafts.push({
 					builder: build.builder,
@@ -405,18 +422,6 @@ export class BulkPurchaseHelper {
 
 		if (buildDrafts.length === 0) {
 			return [];
-		}
-
-		// Create a copy of the currently available resources.
-		// We need a copy, because `_precalculateBuilds` modifies this data.
-		const currentResourcePool: Record<Resource, number> = {} as Record<
-			Resource,
-			number
-		>;
-		for (const res of this._host.game.resPool.resources) {
-			currentResourcePool[res.name] = this._workshopManager.getValueAvailable(
-				res.name,
-			);
 		}
 
 		let iterations = 0;
@@ -560,7 +565,11 @@ export class BulkPurchaseHelper {
 			);
 
 			for (let priceIndex = 0; priceIndex < prices.length; priceIndex++) {
-				if (tempPool[prices[priceIndex].name] < prices[priceIndex].val) {
+				const price = prices[priceIndex];
+				// `!(have >= cost)` also treats a non-finite price as
+				// unaffordable. A plain `have < cost` is false for NaN, which
+				// would let this loop run all the way to its iteration limit.
+				if (!(tempPool[price.name] >= price.val)) {
 					maxItemsBuilt = true;
 					break;
 				}
@@ -701,6 +710,96 @@ export class BulkPurchaseHelper {
 		}
 
 		return ratio + ratioDiff;
+	}
+
+	/**
+	 * Determine how much of every resource the automated builds may spend.
+	 *
+	 * This is the currently available amount, minus whatever the configured
+	 * stock reserve holds back. Resources without a usable capacity are never
+	 * reserved, because we can't hold back a share of a limit that doesn't
+	 * exist.
+	 *
+	 * @returns The spendable amount per resource.
+	 */
+	private _getSpendableResources(): Record<Resource, number> {
+		const pool: Record<Resource, number> = {} as Record<Resource, number>;
+
+		const reserve = this._host.engine.settings.stockReserve;
+		const reserveActive =
+			!isNil(reserve) && reserve.enabled && 0 <= reserve.trigger;
+
+		for (const res of this._host.game.resPool.resources) {
+			const availableRaw = this._workshopManager.getValueAvailable(res.name);
+			// A non-finite amount would make every price comparison below
+			// inconclusive, which is what lets a build counter run away.
+			const available = Number.isFinite(availableRaw) ? availableRaw : 0;
+
+			if (!reserveActive) {
+				pool[res.name] = available;
+				continue;
+			}
+
+			let maximum = 0;
+			if (
+				typeof res.maxValue === "number" &&
+				Number.isFinite(res.maxValue) &&
+				0 < res.maxValue
+			) {
+				maximum = res.maxValue;
+			}
+
+			const heldRaw = reserve.isPercentage
+				? maximum * reserve.trigger
+				: reserve.trigger;
+			// A non-finite reserve would poison the pool and silently disable
+			// every build that touches this resource.
+			const held = Number.isFinite(heldRaw) ? heldRaw : 0;
+
+			const spendable = available - held;
+			pool[res.name] = Number.isFinite(spendable)
+				? Math.max(0, spendable)
+				: available;
+		}
+
+		return pool;
+	}
+
+	/**
+	 * Would the next unit of this build cost more than we're willing to spend on
+	 * a single unit?
+	 *
+	 * @param build The build to check.
+	 * @param currentValue How many of this build we already own.
+	 * @param pool The resources we're allowed to spend.
+	 * @param budget The share of the spendable stock that a single unit may
+	 * cost. A negative value, or no value at all, disables this check.
+	 * @returns `true` if the build is too expensive right now.
+	 */
+	private _isOverBudget(
+		build: AllBuildings,
+		currentValue: number,
+		pool: Readonly<Record<Resource, number>>,
+		budget: number | undefined,
+	): boolean {
+		if (budget === undefined || budget < 0) {
+			return false;
+		}
+
+		const prices = this._getPriceForBuild(build, currentValue);
+		for (const price of prices) {
+			const spendable = pool[price.name];
+			// An unknown resource or a broken price must not veto the build.
+			if (!Number.isFinite(spendable) || !Number.isFinite(price.val)) {
+				continue;
+			}
+
+			if (spendable * budget < price.val) {
+				return true;
+			}
+		}
+
+		return false;
 	}
 
 	/**

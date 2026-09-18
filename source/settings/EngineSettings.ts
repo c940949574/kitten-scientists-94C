@@ -3,7 +3,7 @@ import type { SupportedLocale } from "../Engine.js";
 import { FallbackLocale } from "../UserScriptLoader.js";
 import { LogFilterSettings } from "./LogFilterSettings.js";
 import { ResourcesSettings } from "./ResourcesSettings.js";
-import { Setting, SettingOptions } from "./Settings.js";
+import { Setting, SettingOptions, SettingTrigger } from "./Settings.js";
 import { StateSettings } from "./StateSettings.js";
 
 export class EngineSettings extends Setting {
@@ -28,6 +28,15 @@ export class EngineSettings extends Setting {
 	 */
 	highlighStock: Setting;
 
+	/**
+	 * Hold back a share of every capped resource, so that automated builds can't
+	 * drain the stock completely.
+	 *
+	 * The trigger is either a share of the resource capacity, or an absolute
+	 * amount. It only applies to resources that actually have a capacity.
+	 */
+	stockReserve: SettingTrigger;
+
 	filters: LogFilterSettings;
 	resources: ResourcesSettings;
 	readonly states: StateSettings;
@@ -40,6 +49,7 @@ export class EngineSettings extends Setting {
 		language = FallbackLocale,
 		ksColumn = new Setting(),
 		highlightStock = new Setting(),
+		stockReserve = new SettingTrigger(),
 	) {
 		super(enabled);
 		this.filters = filters;
@@ -53,6 +63,7 @@ export class EngineSettings extends Setting {
 		]);
 		this.ksColumn = ksColumn;
 		this.highlighStock = highlightStock;
+		this.stockReserve = stockReserve;
 	}
 
 	load(settings: Maybe<Partial<EngineSettings>>, retainMetaBehavior = false) {
@@ -68,6 +79,7 @@ export class EngineSettings extends Setting {
 			this.locale.load(settings.locale);
 			this.ksColumn.load(settings.ksColumn);
 			this.highlighStock.load(settings.highlighStock);
+			this.stockReserve.load(settings.stockReserve);
 		}
 
 		this.filters.load(settings.filters);

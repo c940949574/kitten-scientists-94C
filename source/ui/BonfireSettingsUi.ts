@@ -78,6 +78,38 @@ export class BonfireSettingsUi extends SettingsPanel<
 
 					settings.trigger =
 						parent.host.parsePercentage(value) ?? settings.trigger;
+
+					// Limiter B, in the same panel: how much of the spendable stock
+					// a single unit may cost. Prices grow with every unit we own, so
+					// the stock trigger above can't express this on its own.
+					const budget = await Dialog.prompt(
+						parent,
+						parent.host.engine.i18n("ui.trigger.priceBudget.promptExplainer"),
+						parent.host.engine.i18n("ui.trigger.priceBudget.prompt", [label]),
+						settings.priceBudget.trigger !== -1
+							? parent.host.renderPercentage(settings.priceBudget.trigger)
+							: "",
+						parent.host.engine.i18n("ui.trigger.priceBudget.explainer"),
+					);
+
+					// Leaving the first prompt empty already means "no limits".
+					if (budget === undefined) {
+						return;
+					}
+
+					if (budget === "" || budget.startsWith("-")) {
+						settings.priceBudget.enabled = false;
+						settings.priceBudget.trigger = -1;
+						return;
+					}
+
+					const parsedBudget = parent.host.parsePercentage(budget);
+					if (parsedBudget === null) {
+						return;
+					}
+
+					settings.priceBudget.enabled = true;
+					settings.priceBudget.trigger = parsedBudget;
 				},
 				onUnCheck: (_isBatchProcess?: boolean) => {
 					parent.host.engine.imessage("status.auto.disable", [label]);

@@ -68,6 +68,17 @@ export type BonfireBuildingSettings = Record<
 export class BonfireSettings extends SettingTrigger {
 	buildings: BonfireBuildingSettings;
 
+	/**
+	 * Don't buy a building when the price of a single unit would eat more than
+	 * this share of what we can currently spend.
+	 *
+	 * Prices grow exponentially with the amount already built, so a fixed stock
+	 * trigger can't keep up with them. This limiter looks at the price itself.
+	 * Mostly relevant in long runs, where a single building can cost more than
+	 * the entire stock.
+	 */
+	priceBudget: SettingTrigger;
+
 	gatherCatnip: Setting;
 	turnOnMagnetos: Setting;
 	turnOnSteamworks: Setting;
@@ -82,9 +93,11 @@ export class BonfireSettings extends SettingTrigger {
 		turnOnMagnetos = new Setting(),
 		turnOnReactors = new Setting(),
 		upgradeBuildings = new BuildingUpgradeSettings(),
+		priceBudget = new SettingTrigger(),
 	) {
 		super(enabled, trigger);
 		this.buildings = this.initBuildings();
+		this.priceBudget = priceBudget;
 		this.gatherCatnip = gatherCatnip;
 		this.turnOnSteamworks = turnOnSteamworks;
 		this.turnOnMagnetos = turnOnMagnetos;
@@ -154,6 +167,8 @@ export class BonfireSettings extends SettingTrigger {
 		}
 
 		super.load(settings);
+
+		this.priceBudget.load(settings.priceBudget);
 
 		consumeEntriesPedantic(
 			this.buildings,

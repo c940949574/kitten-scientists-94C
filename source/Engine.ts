@@ -81,6 +81,7 @@ export type FrameContext = {
 					enabled: boolean;
 					label?: string;
 					max: number;
+					priceBudget?: number;
 					sectionTrigger?: number;
 					stage?: number;
 					trigger: number;
@@ -103,6 +104,7 @@ export type FrameContext = {
 			>
 		>;
 		sectionTrigger: number;
+		priceBudget?: number;
 		builder: (build: ConcreteBuild) => void;
 	}>;
 	requestGameUiRefresh: boolean;
@@ -538,6 +540,7 @@ export class Engine {
 									baseBuilding: entry.baseBuilding,
 									builder: order.builder,
 									building: entry.building,
+									priceBudget: order.priceBudget,
 									sectionTrigger: order.sectionTrigger,
 									stage: entry.stage,
 									variant: entry.variant,
@@ -562,6 +565,7 @@ export class Engine {
 										enabled: boolean;
 										label?: string;
 										max: number;
+										priceBudget?: number;
 										sectionTrigger: number;
 										stage?: number;
 										trigger: number;
