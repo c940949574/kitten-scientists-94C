@@ -91,6 +91,12 @@ export class ReligionSettings extends SettingTrigger {
 	 */
 	transcend: Setting;
 
+	/**
+	 * Don't build when the price of a single unit would eat more than this
+	 * share of what we can currently spend.
+	 */
+	priceBudget: SettingTrigger;
+
 	constructor(
 		enabled = false,
 		trigger = -1,
@@ -102,6 +108,7 @@ export class ReligionSettings extends SettingTrigger {
 		autoPraise = new SettingTrigger(false, 1),
 		adore = new SettingTrigger(false, 1),
 		transcend = new Setting(),
+		priceBudget = new SettingTrigger(),
 	) {
 		super(enabled, trigger);
 		this.buildings = this.initBuildings();
@@ -113,6 +120,7 @@ export class ReligionSettings extends SettingTrigger {
 		this.autoPraise = autoPraise;
 		this.adore = adore;
 		this.transcend = transcend;
+		this.priceBudget = priceBudget;
 		this.bestUnicornBuildingCurrent = null;
 	}
 
@@ -178,6 +186,8 @@ export class ReligionSettings extends SettingTrigger {
 
 		super.load(settings);
 
+		this.priceBudget.load(settings.priceBudget);
+
 		consumeEntriesPedantic(
 			this.buildings,
 			settings.buildings,
@@ -185,6 +195,7 @@ export class ReligionSettings extends SettingTrigger {
 				building.enabled = item?.enabled ?? building.enabled;
 				building.max = item?.max ?? building.max;
 				building.trigger = item?.trigger ?? building.trigger;
+				building.priceBudget?.load(item?.priceBudget);
 			},
 		);
 

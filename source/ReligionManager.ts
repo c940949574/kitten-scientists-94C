@@ -159,6 +159,9 @@ export class ReligionManager implements Automation {
 				builder,
 				builds: buildRequest,
 				metaData: meta,
+				priceBudget: this.settings.priceBudget.enabled
+					? this.settings.priceBudget.trigger
+					: undefined,
 				sectionTrigger,
 			});
 			return;
@@ -281,7 +284,15 @@ export class ReligionManager implements Automation {
 				build.count,
 			);
 		};
-		context.purchaseOrders.push({ builder, builds, metaData, sectionTrigger });
+		context.purchaseOrders.push({
+			builder,
+			builds,
+			metaData,
+			priceBudget: this.settings.priceBudget.enabled
+				? this.settings.priceBudget.trigger
+				: undefined,
+			sectionTrigger,
+		});
 	}
 
 	/**

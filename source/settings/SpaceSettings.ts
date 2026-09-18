@@ -25,14 +25,23 @@ export class SpaceSettings extends SettingTrigger {
 
 	unlockMissions: MissionSettings;
 
+	/**
+	 * Don't build when the price of a single unit would eat more than this
+	 * share of what we can currently spend. Same limiter as the bonfire
+	 * section's; buildings in space have the same exploding price curves.
+	 */
+	priceBudget: SettingTrigger;
+
 	constructor(
 		enabled = false,
 		trigger = -1,
 		unlockMissions = new MissionSettings(),
+		priceBudget = new SettingTrigger(),
 	) {
 		super(enabled, trigger);
 		this.buildings = this.initBuildings();
 		this.unlockMissions = unlockMissions;
+		this.priceBudget = priceBudget;
 	}
 
 	private initBuildings(): SpaceBuildingSettings {
@@ -54,6 +63,8 @@ export class SpaceSettings extends SettingTrigger {
 
 		super.load(settings);
 
+		this.priceBudget.load(settings.priceBudget);
+
 		consumeEntriesPedantic(
 			this.buildings,
 			settings.buildings,
@@ -61,6 +72,7 @@ export class SpaceSettings extends SettingTrigger {
 				building.enabled = item?.enabled ?? building.enabled;
 				building.max = item?.max ?? building.max;
 				building.trigger = item?.trigger ?? building.trigger;
+				building.priceBudget?.load(item?.priceBudget);
 			},
 		);
 

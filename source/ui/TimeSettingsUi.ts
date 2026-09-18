@@ -47,9 +47,8 @@ export class TimeSettingsUi extends SettingsPanel<
 						!settings.enabled || settings.trigger === -1;
 				},
 				onRefreshTrigger() {
-					this.triggerButton.element[0].title = parent.host.engine.i18n(
-						"ui.trigger.section",
-						[
+					this.triggerButton.updateTitle(
+						parent.host.engine.i18n("ui.trigger.section", [
 							settings.trigger < 0
 								? parent.host.engine.i18n("ui.trigger.section.inactive")
 								: parent.host.renderPercentage(
@@ -57,40 +56,17 @@ export class TimeSettingsUi extends SettingsPanel<
 										locale.selected,
 										true,
 									),
-						],
+						]),
 					);
 				},
 				onSetTrigger: async () => {
-					const value = await Dialog.prompt(
+					await BuildSectionTools.setSectionTrigger(
 						parent,
-						parent.host.engine.i18n("ui.trigger.prompt.percentage"),
-						parent.host.engine.i18n("ui.trigger.section.prompt", [
-							label,
-							settings.trigger !== -1
-								? parent.host.renderPercentage(
-										settings.trigger,
-										locale.selected,
-										true,
-									)
-								: parent.host.engine.i18n("ui.infinity"),
-						]),
-						settings.trigger !== -1
-							? parent.host.renderPercentage(settings.trigger)
-							: "",
-						parent.host.engine.i18n("ui.trigger.section.promptExplainer"),
+						settings,
+						settings.priceBudget,
+						label,
+						locale,
 					);
-
-					if (value === undefined) {
-						return;
-					}
-
-					if (value === "" || value.startsWith("-")) {
-						settings.trigger = -1;
-						return;
-					}
-
-					settings.trigger =
-						parent.host.parsePercentage(value) ?? settings.trigger;
 				},
 				onUnCheck: (_isBatchProcess?: boolean) => {
 					parent.host.engine.imessage("status.auto.disable", [label]);

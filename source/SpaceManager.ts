@@ -79,7 +79,15 @@ export class SpaceManager implements Automation {
 		const builder = (build: ConcreteBuild) => {
 			this.build(build.id as SpaceBuilding, build.count);
 		};
-		context.purchaseOrders.push({ builder, builds, metaData, sectionTrigger });
+		context.purchaseOrders.push({
+			builder,
+			builds,
+			metaData,
+			priceBudget: this.settings.priceBudget.enabled
+				? this.settings.priceBudget.trigger
+				: undefined,
+			sectionTrigger,
+		});
 	}
 
 	autoUnlock(_context: FrameContext) {

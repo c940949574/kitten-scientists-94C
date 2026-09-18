@@ -8,7 +8,6 @@ import type { Building, StagedBuilding } from "../types/index.js";
 import { BuildingUpgradeSettingsUi } from "./BuildingUpgradeSettingsUi.js";
 import { BuildSectionTools } from "./BuildSectionTools.js";
 import { Delimiter } from "./components/Delimiter.js";
-import { Dialog } from "./components/Dialog.js";
 import { HeaderListItem } from "./components/HeaderListItem.js";
 import { SettingListItem } from "./components/SettingListItem.js";
 import { SettingsList } from "./components/SettingsList.js";
@@ -36,7 +35,7 @@ export class BonfireSettingsUi extends SettingsPanel<
 					parent.host.engine.imessage("status.auto.enable", [label]);
 				},
 				onRefreshTrigger: () => {
-					this.settingItem.triggerButton.element[0].title =
+					this.settingItem.triggerButton.updateTitle(
 						parent.host.engine.i18n("ui.trigger.section", [
 							settings.trigger < 0
 								? parent.host.engine.i18n("ui.trigger.section.inactive")
@@ -45,77 +44,21 @@ export class BonfireSettingsUi extends SettingsPanel<
 										locale.selected,
 										true,
 									),
-						]);
+						]),
+					);
 				},
 				onSetTrigger: async () => {
 					// Both limiters in one dialog: the stock trigger and the price
 					// budget that caps how much of the spendable stock a single unit
 					// may cost. Prices grow with every unit we own, so the stock
 					// trigger alone can't express that.
-					const result = await Dialog.promptFields(
+					await BuildSectionTools.setSectionTrigger(
 						parent,
-						[
-							{
-								explainer: parent.host.engine.i18n(
-									"ui.trigger.section.promptExplainer",
-								),
-								initialValue:
-									settings.trigger !== -1
-										? parent.host.renderPercentage(settings.trigger)
-										: "",
-								text: parent.host.engine.i18n("ui.trigger.prompt.percentage"),
-							},
-							{
-								explainer: parent.host.engine.i18n(
-									"ui.trigger.priceBudget.explainer",
-								),
-								initialValue:
-									settings.priceBudget.trigger !== -1
-										? parent.host.renderPercentage(settings.priceBudget.trigger)
-										: "",
-								text: parent.host.engine.i18n("ui.trigger.priceBudget.prompt", [
-									label,
-								]),
-							},
-						],
-						parent.host.engine.i18n("ui.trigger.section.prompt", [
-							label,
-							settings.trigger !== -1
-								? parent.host.renderPercentage(
-										settings.trigger,
-										locale.selected,
-										true,
-									)
-								: parent.host.engine.i18n("ui.infinity"),
-						]),
+						settings,
+						settings.priceBudget,
+						label,
+						locale,
 					);
-
-					if (!result) {
-						return;
-					}
-
-					const [triggerValue, budgetValue] = result;
-
-					if (triggerValue === "" || triggerValue.startsWith("-")) {
-						settings.trigger = -1;
-					} else {
-						settings.trigger =
-							parent.host.parsePercentage(triggerValue) ?? settings.trigger;
-					}
-
-					if (budgetValue === "" || budgetValue.startsWith("-")) {
-						settings.priceBudget.enabled = false;
-						settings.priceBudget.trigger = -1;
-						return;
-					}
-
-					const parsedBudget = parent.host.parsePercentage(budgetValue);
-					if (parsedBudget === null) {
-						return;
-					}
-
-					settings.priceBudget.enabled = true;
-					settings.priceBudget.trigger = parsedBudget;
 				},
 				onUnCheck: (_isBatchProcess?: boolean) => {
 					parent.host.engine.imessage("status.auto.disable", [label]);

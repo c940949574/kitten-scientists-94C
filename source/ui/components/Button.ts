@@ -22,6 +22,16 @@ export class Button extends UiComponent {
 	inactive: boolean;
 	ineffective: boolean;
 
+	// The refresh cycle runs over *every* component in the settings tree, even
+	// when nothing changed. DOM writes are what makes that cycle (and every
+	// click, which schedules one) noticeable in late game, so we skip writes
+	// when the value didn't actually change.
+	private _lastLabel: string | undefined;
+	private _lastTitle: string | undefined;
+	private _lastReadonly: boolean | undefined;
+	private _lastInactive: boolean | undefined;
+	private _lastIneffective: boolean | undefined;
+
 	/**
 	 * Constructs a `Button`.
 	 *
@@ -39,22 +49,19 @@ export class Button extends UiComponent {
 		super(parent, {
 			...options,
 			onRefresh: () => {
-				if (this.readOnly) {
-					this.element.addClass(styles.readonly);
-				} else {
-					this.element.removeClass(styles.readonly);
+				if (this.readOnly !== this._lastReadonly) {
+					this._lastReadonly = this.readOnly;
+					this.element.toggleClass(styles.readonly, this.readOnly);
 				}
 
-				if (this.inactive) {
-					this.element.addClass(styles.inactive);
-				} else {
-					this.element.removeClass(styles.inactive);
+				if (this.inactive !== this._lastInactive) {
+					this._lastInactive = this.inactive;
+					this.element.toggleClass(styles.inactive, this.inactive);
 				}
 
-				if (this.ineffective) {
-					this.element.addClass(styles.ineffective);
-				} else {
-					this.element.removeClass(styles.ineffective);
+				if (this.ineffective !== this._lastIneffective) {
+					this._lastIneffective = this.ineffective;
+					this.element.toggleClass(styles.ineffective, this.ineffective);
 				}
 
 				options?.onRefresh?.();
@@ -120,6 +127,11 @@ export class Button extends UiComponent {
 	}
 
 	updateLabel(label: string) {
+		if (this._lastLabel === label) {
+			return;
+		}
+		this._lastLabel = label;
+
 		this.element.text(label);
 		if (this._iconElement !== undefined) {
 			if (this.options.alignment === "right") {
@@ -130,6 +142,11 @@ export class Button extends UiComponent {
 		}
 	}
 	updateTitle(title: string) {
+		if (this._lastTitle === title) {
+			return;
+		}
+		this._lastTitle = title;
+
 		this.element.prop("title", title);
 	}
 

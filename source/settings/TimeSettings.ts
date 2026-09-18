@@ -109,14 +109,22 @@ export class TimeSettings extends SettingTrigger {
 	 */
 	fixCryochambers: FixCryochambersSettings;
 
+	/**
+	 * Don't build when the price of a single unit would eat more than this
+	 * share of what we can currently spend.
+	 */
+	priceBudget: SettingTrigger;
+
 	constructor(
 		enabled = false,
 		trigger = -1,
 		fixCryochambers = new FixCryochambersSettings(false, 0),
+		priceBudget = new SettingTrigger(),
 	) {
 		super(enabled, trigger);
 		this.buildings = this.initBuildings();
 		this.fixCryochambers = fixCryochambers;
+		this.priceBudget = priceBudget;
 	}
 
 	private initBuildings(): TimeBuildingsSettings {
@@ -140,6 +148,8 @@ export class TimeSettings extends SettingTrigger {
 
 		super.load(settings);
 
+		this.priceBudget.load(settings.priceBudget);
+
 		consumeEntriesPedantic(
 			this.buildings,
 			settings.buildings,
@@ -147,6 +157,7 @@ export class TimeSettings extends SettingTrigger {
 				building.enabled = item?.enabled ?? building.enabled;
 				building.max = item?.max ?? building.max;
 				building.trigger = item?.trigger ?? building.trigger;
+				building.priceBudget?.load(item?.priceBudget);
 			},
 		);
 

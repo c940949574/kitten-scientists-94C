@@ -177,6 +177,7 @@ export class BonfireSettings extends SettingTrigger {
 				building.enabled = item?.enabled ?? building.enabled;
 				building.max = item?.max ?? building.max;
 				building.trigger = item?.trigger ?? building.trigger;
+				building.priceBudget?.load(item?.priceBudget);
 			},
 		);
 

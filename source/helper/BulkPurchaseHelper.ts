@@ -77,6 +77,9 @@ export type BuildRequest = {
 	id: AllBuildings;
 	limit: number;
 	val: number;
+	// Share of the spendable stock a single unit may cost. Enforced for every
+	// unit in the chain, not just the first one. `undefined` disables it.
+	priceBudget?: number;
 	// For staged buildings.
 	name: AllBuildings | null;
 	stage: number | null;
@@ -88,6 +91,7 @@ export type ConcreteBuild = {
 	limit: number;
 	val: number;
 	count: number;
+	priceBudget?: number;
 	builder: (build: ConcreteBuild) => void;
 	// For staged buildings.
 	name: AllBuildings | null;
@@ -412,6 +416,7 @@ export class BulkPurchaseHelper {
 					count: 1,
 					id: name,
 					limit: build.max,
+					priceBudget: build.priceBudget,
 					name: (build.baseBuilding ?? build.building) as Building,
 					stage: build.stage ?? null,
 					val: buildMetaData.val,
@@ -442,6 +447,7 @@ export class BulkPurchaseHelper {
 					},
 					metaData,
 					tempPool,
+					currentResourcePool,
 				);
 
 				if (possibleInstances.count === 0) {
@@ -488,6 +494,7 @@ export class BulkPurchaseHelper {
 					},
 					metaData,
 					tempPool,
+					currentResourcePool,
 				);
 				if (possibleInstances.count < build.count) {
 					buildIsValid = false;
@@ -540,11 +547,19 @@ export class BulkPurchaseHelper {
 		resources: Readonly<Record<Resource, number>> = {} as Readonly<
 			Record<Resource, number>
 		>,
+		// The budget is measured against this snapshot, not against the
+		// shrinking pool — otherwise the allowance would decay while the
+		// chain is being built, making the limit unpredictable.
+		budgetPool: Readonly<Record<Resource, number>> = resources,
 	): {
 		count: number;
 		remainingResources: Record<Resource, number>;
 	} {
 		let buildsPossible = 0;
+
+		const budget = buildCacheItem.priceBudget;
+		const budgetActive =
+			typeof budget === "number" && Number.isFinite(budget) && 0 <= budget;
 
 		const tempPool = { ...resources };
 
@@ -572,6 +587,23 @@ export class BulkPurchaseHelper {
 				if (!(tempPool[price.name] >= price.val)) {
 					maxItemsBuilt = true;
 					break;
+				}
+			}
+			// The price budget applies to *every* unit in the chain, not only
+			// the first one. Without this, a single tick could devour the
+			// entire spendable stock once the first unit passed the gate.
+			if (!maxItemsBuilt && budgetActive) {
+				for (let priceIndex = 0; priceIndex < prices.length; priceIndex++) {
+					const reference = budgetPool[prices[priceIndex].name];
+					// An unknown or broken resource reference must not veto
+					// the build; only a definitive overshoot stops the chain.
+					if (
+						Number.isFinite(reference) &&
+						!(reference * (budget as number) >= prices[priceIndex].val)
+					) {
+						maxItemsBuilt = true;
+						break;
+					}
 				}
 			}
 			if (!maxItemsBuilt) {

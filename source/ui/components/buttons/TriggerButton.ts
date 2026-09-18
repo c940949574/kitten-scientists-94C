@@ -19,6 +19,7 @@ export type TriggerButtonOptions = ThisType<TriggerButton> &
 export class TriggerButton extends Button {
 	declare readonly options: TriggerButtonOptions;
 	readonly setting: SettingTrigger | SettingThreshold;
+	private _lastInactiveApplied: boolean | undefined;
 
 	/**
 	 * How this button's value is currently interpreted.
@@ -59,10 +60,11 @@ export class TriggerButton extends Button {
 				// looking inactive until the next refresh.
 				options?.onRefresh?.call(this);
 
-				if (!this.inactive) {
-					this.element.removeClass(stylesButton.inactive);
-				} else {
-					this.element.addClass(stylesButton.inactive);
+				// Only touch the DOM when the state actually changed; this runs
+				// for every trigger button on every refresh cycle.
+				if (this.inactive !== this._lastInactiveApplied) {
+					this._lastInactiveApplied = this.inactive;
+					this.element.toggleClass(stylesButton.inactive, this.inactive);
 				}
 			},
 		});

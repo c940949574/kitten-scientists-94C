@@ -268,9 +268,28 @@ export class SettingLimitedTrigger
 export class SettingTriggerMax extends SettingTrigger implements SettingMax {
 	max: number;
 
-	constructor(enabled = false, trigger = -1, max = 0) {
+	/**
+	 * A price budget for this specific build option.
+	 *
+	 * Building prices grow with every unit already owned, so a fixed stock
+	 * trigger can't keep up with them. When enabled, this limits builds to
+	 * options whose *next unit* costs at most this share of the spendable
+	 * stock, overriding the section's budget.
+	 *
+	 * Optional, because not every `SettingTriggerMax` describes something that
+	 * is purchased with resources.
+	 */
+	priceBudget?: SettingTrigger;
+
+	constructor(
+		enabled = false,
+		trigger = -1,
+		max = 0,
+		priceBudget = new SettingTrigger(),
+	) {
 		super(enabled, trigger);
 		this.max = max;
+		this.priceBudget = priceBudget;
 	}
 
 	load(setting: Maybe<Partial<SettingTriggerMax>>) {
@@ -280,6 +299,7 @@ export class SettingTriggerMax extends SettingTrigger implements SettingMax {
 
 		super.load(setting);
 		this.max = setting.max ?? this.max;
+		this.priceBudget?.load(setting.priceBudget);
 	}
 }
 

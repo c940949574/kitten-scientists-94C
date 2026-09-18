@@ -149,7 +149,15 @@ export class TimeManager {
 				build.count,
 			);
 		};
-		context.purchaseOrders.push({ builder, builds, metaData, sectionTrigger });
+		context.purchaseOrders.push({
+			builder,
+			builds,
+			metaData,
+			priceBudget: this.settings.priceBudget.enabled
+				? this.settings.priceBudget.trigger
+				: undefined,
+			sectionTrigger,
+		});
 	}
 
 	build(

@@ -35,6 +35,7 @@ import { EngineSettings } from "./settings/EngineSettings.js";
 import type { FilterItemGame } from "./settings/LogFilterSettings.js";
 import { ReligionSettings } from "./settings/ReligionSettings.js";
 import { ScienceSettings } from "./settings/ScienceSettings.js";
+import type { SettingTrigger } from "./settings/Settings.js";
 import { SpaceSettings } from "./settings/SpaceSettings.js";
 import { TimeControlSettings } from "./settings/TimeControlSettings.js";
 import { TimeSettings } from "./settings/TimeSettings.js";
@@ -81,7 +82,10 @@ export type FrameContext = {
 					enabled: boolean;
 					label?: string;
 					max: number;
-					priceBudget?: number;
+					// A number is the section's budget, stamped onto every entry.
+					// A `SettingTrigger` is a building's own budget, which takes
+					// precedence when it is enabled.
+					priceBudget?: number | SettingTrigger;
 					sectionTrigger?: number;
 					stage?: number;
 					trigger: number;
@@ -535,12 +539,25 @@ export class Engine {
 						let metaData = { ...context.purchaseOrders[0].metaData };
 						for (const order of context.purchaseOrders) {
 							for (const [name, entry] of objectEntries(order.builds)) {
+								// A building's own price budget wins over the section's,
+								// but only when it is actually configured. Anything
+								// non-finite must not leak into the build evaluation.
+								const ownBudget = entry.priceBudget;
+								const ownBudgetValue =
+									typeof ownBudget === "object" &&
+									ownBudget !== null &&
+									ownBudget.enabled &&
+									Number.isFinite(ownBudget.trigger) &&
+									0 <= ownBudget.trigger
+										? ownBudget.trigger
+										: undefined;
+
 								builds[name] = {
 									...entry,
 									baseBuilding: entry.baseBuilding,
 									builder: order.builder,
 									building: entry.building,
-									priceBudget: order.priceBudget,
+									priceBudget: ownBudgetValue ?? order.priceBudget,
 									sectionTrigger: order.sectionTrigger,
 									stage: entry.stage,
 									variant: entry.variant,
