@@ -264,3 +264,45 @@ export const chronoSafeSpendShare = (
 	const share = 1 - 1 / stasis;
 	return Number.isFinite(share) && 0 < share ? share : undefined;
 };
+
+/**
+ * A ready-to-type price budget recommendation for the current situation.
+ *
+ * Takes the price ratio the budget would apply to and answers "what should I
+ * type into the field": 80% of the hard limit `f * (r - 1) / r`, where `f` is
+ * the safe spend share of the standing chronospheres. Rounding and display are
+ * up to the caller.
+ *
+ * @returns The recommendation with the hard limit and the chronosphere count,
+ * or `undefined` when there is no meaningful recommendation — the ratio is
+ * unusable, or the stock shrinks no matter what (fewer than
+ * `ChronospheresForGrowth` chronospheres).
+ */
+export const recommendedPriceBudget = (
+	host: KittenScientists,
+	priceRatio: number | undefined,
+): { budget: number; limit: number; chronos: number } | undefined => {
+	if (
+		priceRatio === undefined ||
+		!Number.isFinite(priceRatio) ||
+		priceRatio <= 1
+	) {
+		return undefined;
+	}
+
+	const allowance = chronoSafeSpendShare(host);
+	if (allowance === undefined) {
+		return undefined;
+	}
+
+	const limit = (allowance * (priceRatio - 1)) / priceRatio;
+	if (!Number.isFinite(limit) || limit <= 0) {
+		return undefined;
+	}
+
+	return {
+		budget: limit * 0.8,
+		limit,
+		chronos: chronosphereCount(host),
+	};
+};

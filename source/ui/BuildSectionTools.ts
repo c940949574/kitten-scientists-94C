@@ -5,6 +5,7 @@ import {
 	chronoSafeSpendShare,
 	chronoStasisShare,
 	chronosphereCount,
+	recommendedPriceBudget,
 } from "../helper/PriceBudget.js";
 import type { KittenScientists } from "../KittenScientists.js";
 import type {
@@ -162,6 +163,30 @@ const confirmChronoWarning = async (
 };
 
 /**
+ * One tooltip/prompt line telling the player what to type into a price budget
+ * field, derived from the standing chronospheres and the price ratio at hand.
+ *
+ * @returns The line, or an empty string when there is no recommendation —
+ * including the "fewer than 67 chronospheres" case, where the regular
+ * warning already covers the situation.
+ */
+const priceBudgetRecommendLine = (
+	host: KittenScientists,
+	priceRatio?: () => number | undefined,
+): string => {
+	const recommend = recommendedPriceBudget(host, priceRatio?.());
+	if (!recommend) {
+		return "";
+	}
+
+	return `\n${host.engine.i18n("ui.trigger.priceBudget.recommend", [
+		host.renderAbsolute(recommend.chronos),
+		host.renderPercentage(recommend.budget, undefined, true),
+		host.renderPercentage(recommend.limit, undefined, true),
+	])}`;
+};
+
+/**
  * The tooltip lines a section's price budget contributes: the budget itself
  * and, when the budget lets a cycle outspend the chronospheres, a warning.
  *
@@ -230,7 +255,9 @@ export const BuildSectionTools = {
 					text: host.engine.i18n("ui.trigger.prompt.percentage"),
 				},
 				{
-					explainer: host.engine.i18n("ui.trigger.priceBudget.explainer"),
+					explainer:
+						host.engine.i18n("ui.trigger.priceBudget.explainer") +
+						priceBudgetRecommendLine(host, priceRatio),
 					initialValue:
 						priceBudget.enabled && priceBudget.trigger !== -1
 							? host.renderPercentage(priceBudget.trigger)
@@ -393,10 +420,11 @@ export const BuildSectionTools = {
 						text: parent.host.engine.i18n("ui.trigger.prompt.percentage"),
 					},
 					{
-						explainer: parent.host.engine.i18n(
-							"ui.trigger.priceBudget.build.explainer",
-							[label],
-						),
+						explainer:
+							parent.host.engine.i18n(
+								"ui.trigger.priceBudget.build.explainer",
+								[label],
+							) + priceBudgetRecommendLine(parent.host, priceRatio),
 						initialValue:
 							budgetSetting.enabled && budgetSetting.trigger !== -1
 								? parent.host.renderPercentage(budgetSetting.trigger)
@@ -704,10 +732,11 @@ export const BuildSectionTools = {
 							text: parent.host.engine.i18n("ui.trigger.prompt.percentage"),
 						},
 						{
-							explainer: parent.host.engine.i18n(
-								"ui.trigger.priceBudget.build.explainer",
-								[label],
-							),
+							explainer:
+								parent.host.engine.i18n(
+									"ui.trigger.priceBudget.build.explainer",
+									[label],
+								) + priceBudgetRecommendLine(parent.host, priceRatio),
 							initialValue:
 								budget.enabled && budget.trigger !== -1
 									? parent.host.renderPercentage(budget.trigger)

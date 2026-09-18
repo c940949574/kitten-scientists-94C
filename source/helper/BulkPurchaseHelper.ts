@@ -63,7 +63,11 @@ import type {
 	UnsafeVoidSpaceUpgradeButtonOptions,
 } from "../types/time.js";
 import type { WorkshopManager } from "../WorkshopManager.js";
-import { type PriceRatioData, resolvePriceRatio } from "./PriceBudget.js";
+import {
+	isPreservedResource,
+	type PriceRatioData,
+	resolvePriceRatio,
+} from "./PriceBudget.js";
 
 export type BulkBuildListItem = {
 	count: number;
@@ -804,6 +808,15 @@ export class BulkPurchaseHelper {
 
 		const prices = this._getPriceForBuild(build, currentValue);
 		for (const price of prices) {
+			// The budget exists to keep the next run growing, and only
+			// non-crafted, non-luxury resources are carried over by
+			// chronospheres. Crafted prices — steel, plates, … — don't veto
+			// the build; they stay subject to the regular affordability
+			// check and the stock reserve.
+			if (!isPreservedResource(price.name)) {
+				continue;
+			}
+
 			const spendable = pool[price.name];
 			// An unknown resource or a broken price must not veto the build.
 			if (!Number.isFinite(spendable) || !Number.isFinite(price.val)) {
