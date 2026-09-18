@@ -32,12 +32,13 @@ export class TimeControlManager {
 	 * The interface is only refreshed on demand, so the acquisition settings show
 	 * the maximum they detected when they were last drawn.
 	 *
-	 * `null` marks "never reported yet". It has to be a value that compares equal
-	 * to itself: with `NaN` as the sentinel, `NaN !== NaN` would stay true no
-	 * matter what was stored, and every frame would repaint the whole interface
-	 * whenever the game reports `NaN` for the maximum.
+	 * `null` marks "never reported yet", and it doubles as "the game reports no
+	 * usable maximum" (`undefined` or `NaN`). Callers fold every non-finite value
+	 * onto this sentinel before comparing, because `NaN !== NaN` would stay true
+	 * no matter what was stored — and that would repaint the whole interface on
+	 * every single frame.
 	 */
-	private _reportedTemporalFluxMaximum: number | undefined | null = null;
+	private _reportedTemporalFluxMaximum: number | null = null;
 
 	constructor(
 		host: KittenScientists,
@@ -59,8 +60,17 @@ export class TimeControlManager {
 		// the value changed, so the settings don't keep showing a stale maximum.
 		// This is checked even while this section is disabled, because the setting
 		// is usually configured before it is switched on.
+		// `maxValue` is optional, and it can also be `NaN` while the game has no
+		// meaningful cap — right after a reset, before any chronosphere exists.
+		// Comparing the raw value is not enough: `NaN !== NaN` stays true forever,
+		// so once a `NaN` got stored below, *every* following frame would repaint
+		// the entire interface. Folding every non-finite value onto the same
+		// sentinel lets the comparison settle.
+		const rawMaximum = this._host.game.resPool.get("temporalFlux").maxValue;
 		const temporalFluxMaximum =
-			this._host.game.resPool.get("temporalFlux").maxValue;
+			typeof rawMaximum === "number" && Number.isFinite(rawMaximum)
+				? rawMaximum
+				: null;
 		if (temporalFluxMaximum !== this._reportedTemporalFluxMaximum) {
 			this._reportedTemporalFluxMaximum = temporalFluxMaximum;
 			this._host.refreshEntireUserInterface();

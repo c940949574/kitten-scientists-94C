@@ -370,8 +370,15 @@ export class TimeManager {
 		);
 		const model = controller.fetchModel({});
 
+		// No more repairs can ever go through than there are broken chambers, so
+		// this caps how much work a single frame does right after a reset, when
+		// every stored chamber breaks at once. It also stops a single misbehaving
+		// `buyItem` — one that reports success without consuming anything — from
+		// spinning here forever.
+		const brokenChambers = this._host.game.time.getVSU("usedCryochambers").val;
+
 		let fixed = 0;
-		while (staysAboveLimit() && canAfford()) {
+		while (fixed < brokenChambers && staysAboveLimit() && canAfford()) {
 			const buyResult = controller.buyItem(model);
 			if (!buyResult.itemBought) {
 				break;
