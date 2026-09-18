@@ -685,6 +685,17 @@ export class TimeControlManager {
 			return 0;
 		}
 
+		// Hold off until enough chronospheres stand: below the configured minimum
+		// the flux a skipped year yields isn't worth the crystals it costs.
+		const minimumChronospheres = setting.minimumChronospheres;
+		if (
+			minimumChronospheres.enabled &&
+			this._host.game.bld.getBuildingExt("chronosphere").meta.val <
+				minimumChronospheres.trigger
+		) {
+			return 0;
+		}
+
 		// Chronospheres only produce temporal flux after the "turnSmoothly"
 		// workshop upgrade has been researched.
 		if (!this._host.game.workshop.get("turnSmoothly").researched) {

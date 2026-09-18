@@ -169,6 +169,55 @@ export class AcquireTemporalFluxSettingsUi extends SettingsPanel<
 		this.settingItem.addChildHead(this.maxButton);
 		this.settingItem.triggerButton.element.before(this.maxButton.element);
 
+		const minimumChronospheres = new SettingTriggerListItem(
+			this,
+			settings.minimumChronospheres,
+			locale,
+			parent.host.engine.i18n(
+				"option.time.skip.acquireTemporalFlux.minimumChronospheres",
+			),
+			{
+				onSetTrigger: async () => {
+					const value = await Dialog.prompt(
+						this,
+						parent.host.engine.i18n("ui.minimumChronospheres.prompt"),
+						parent.host.engine.i18n("ui.minimumChronospheres.promptTitle"),
+						parent.host.renderAbsolute(settings.minimumChronospheres.trigger),
+						parent.host.engine.i18n("ui.minimumChronospheres.promptExplainer"),
+					);
+					if (value === undefined || value === "") {
+						return;
+					}
+
+					// A chronosphere count is absolute, so a share of some maximum
+					// makes no sense here. Percentages are dropped like an empty value.
+					const entry = parsePercentageEntry(value);
+					if (
+						entry === null ||
+						entry.kind === "invalid" ||
+						entry.kind === "percentage"
+					) {
+						return;
+					}
+
+					settings.minimumChronospheres.isPercentage = false;
+					settings.minimumChronospheres.trigger = Math.max(
+						0,
+						Math.floor(entry.value),
+					);
+				},
+				onRefreshTrigger: () => {
+					minimumChronospheres.triggerButton.ineffective =
+						settings.minimumChronospheres.enabled &&
+						parent.host.game.bld.getBuildingExt("chronosphere").meta.val <
+							settings.minimumChronospheres.trigger;
+				},
+			},
+		);
+		minimumChronospheres.element[0].title = parent.host.engine.i18n(
+			"ui.option.time.skip.acquireTemporalFlux.minimumChronospheres.title",
+		);
+
 		this.addChildContent(
 			new SettingsList(this, {
 				hasDisableAll: false,
@@ -177,10 +226,11 @@ export class AcquireTemporalFluxSettingsUi extends SettingsPanel<
 				new SettingListItem(
 					this,
 					settings.ignoreOverheat,
-					this.host.engine.i18n(
+					parent.host.engine.i18n(
 						"option.time.skip.acquireTemporalFlux.ignoreOverheat",
 					),
 				),
+				minimumChronospheres,
 			]),
 		);
 	}

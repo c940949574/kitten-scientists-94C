@@ -2,7 +2,12 @@ import { isNil, type Maybe } from "@oliversalzburg/js-utils/data/nil.js";
 import { TimeSkipHeatSettings } from "../settings/TimeSkipHeatSettings.js";
 import { consumeEntriesPedantic } from "../tools/Entries.js";
 import { type Cycle, Cycles, type Season, Seasons } from "../types/index.js";
-import { Setting, SettingThresholdMax, SettingTrigger } from "./Settings.js";
+import {
+	Setting,
+	SettingThreshold,
+	SettingThresholdMax,
+	SettingTrigger,
+} from "./Settings.js";
 
 export type CyclesSettings = Record<Cycle, Setting>;
 export type SeasonsSettings = Record<Season, Setting>;
@@ -17,6 +22,20 @@ export type SeasonsSettings = Record<Season, Setting>;
  */
 export class AcquireTemporalFluxSettings extends SettingTrigger {
 	/**
+	 * Hold off on acquiring temporal flux until at least this many
+	 * chronospheres are built.
+	 *
+	 * Chronospheres are what actually produce temporal flux, so once a player
+	 * has crossed a certain number of them, burning time crystals to skip years
+	 * becomes worthwhile. Below that threshold the acquisition is paused, which
+	 * keeps it from spending crystals for a trickle of flux early on.
+	 *
+	 * The trigger holds the minimum number of standing chronospheres. It can't
+	 * be a share of anything, so only an absolute count is accepted.
+	 */
+	readonly minimumChronospheres: SettingThreshold;
+
+	/**
 	 * Burn time crystals even while the stored heat has reached its maximum.
 	 *
 	 * Combusting time crystals while overheated costs a premium, so by default
@@ -29,9 +48,11 @@ export class AcquireTemporalFluxSettings extends SettingTrigger {
 		trigger = 0.5,
 		triggerIsPercentage?: boolean,
 		ignoreOverheat = new Setting(),
+		minimumChronospheres = new SettingThreshold(),
 	) {
 		super(enabled, trigger, triggerIsPercentage);
 		this.ignoreOverheat = ignoreOverheat;
+		this.minimumChronospheres = minimumChronospheres;
 	}
 
 	load(settings: Maybe<Partial<AcquireTemporalFluxSettings>>) {
@@ -41,6 +62,7 @@ export class AcquireTemporalFluxSettings extends SettingTrigger {
 
 		super.load(settings);
 		this.ignoreOverheat.load(settings.ignoreOverheat);
+		this.minimumChronospheres.load(settings.minimumChronospheres);
 	}
 }
 
