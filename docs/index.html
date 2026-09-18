@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>价格预算临界值计算器 · Kitten Scientists 中文版</title>
+<style>
+  :root {
+    --bg: #f6f8fa; --card: #ffffff; --border: #d0d7de;
+    --text: #1f2328; --muted: #656d76; --accent: #0969da;
+    --ok: #1a7f37; --warn: #9a6700; --bad: #cf222e;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 24px 16px 48px; background: var(--bg); color: var(--text);
+    font: 15px/1.6 -apple-system, "Segoe UI", "Microsoft YaHei", "PingFang SC", sans-serif;
+  }
+  .wrap { max-width: 860px; margin: 0 auto; }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  .sub { color: var(--muted); margin: 0 0 20px; font-size: 14px; }
+  .card {
+    background: var(--card); border: 1px solid var(--border); border-radius: 8px;
+    padding: 18px 20px; margin-bottom: 16px;
+  }
+  label { font-weight: 600; }
+  input[type="number"] {
+    font: inherit; width: 110px; padding: 6px 10px; border: 1px solid var(--border);
+    border-radius: 6px; margin: 0 8px;
+  }
+  input[type="checkbox"] { transform: scale(1.15); margin-right: 6px; vertical-align: middle; }
+  .hint { color: var(--muted); font-size: 13px; margin-top: 6px; }
+  table { width: 100%; border-collapse: collapse; margin-top: 12px; font-size: 14px; }
+  th, td { border: 1px solid var(--border); padding: 8px 10px; text-align: right; white-space: nowrap; }
+  th:first-child, td:first-child { text-align: left; white-space: normal; }
+  th { background: var(--bg); font-weight: 600; }
+  .big { font-weight: 700; font-size: 15px; }
+  .ok { color: var(--ok); } .warn { color: var(--warn); } .bad { color: var(--bad); }
+  .banner { border-radius: 6px; padding: 12px 16px; margin-top: 12px; font-weight: 600; }
+  .banner.bad { background: #ffebe9; border: 1px solid #ff818266; color: var(--bad); }
+  .banner.ok { background: #dafbe1; border: 1px solid #4ac26b66; color: var(--ok); }
+  details { margin-top: 14px; color: var(--muted); font-size: 13px; }
+  summary { cursor: pointer; font-weight: 600; color: var(--text); }
+  .custom { margin-top: 12px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .custom input { width: 90px; }
+  footer { color: var(--muted); font-size: 13px; margin-top: 20px; }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>价格预算临界值计算器</h1>
+  <p class="sub">Kitten Scientists 中文版 · 输入超时空传送仪座数，直接得到该填的数</p>
+
+  <div class="card">
+    <label>超时空传送仪座数</label>
+    <input type="number" id="chrono" min="0" max="9999" step="1" value="100">
+    <label style="margin-left:16px">
+      <input type="checkbox" id="tech" checked>篝火已研发全部形而上学减免
+    </label>
+    <div class="hint">减免只在篝火生效：Enlightenment −1%、Golden Ratio −1.618%、Divine Proportion −1.778%、Vitruvian Feline −2%、Renaissance −2.25%，合计 −8.646%。太空、宗教、时间不受影响。</div>
+    <div id="banner"></div>
+  </div>
+
+  <div class="card">
+    <table id="tbl">
+      <thead>
+        <tr>
+          <th>建筑</th><th>价格指数 r</th><th>放大倍数</th>
+          <th>可安全消耗额度</th><th>预算上限（不亏的极限）</th><th>推荐填写</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+
+    <div class="custom">
+      <label>高级：自定义价格指数 r</label>
+      <input type="number" id="cr" step="0.00001" min="1.00001" placeholder="如 1.06354">
+      <span class="hint">游戏里某建筑当前实际的价格指数（不确定就别填，用上面的档位就行）</span>
+    </div>
+
+    <details>
+      <summary>这些数是怎么算出来的</summary>
+      <p>每座超时空传送仪在重置时带回 1.5% 的非制作资源，座数 N 对应带回比例 k = 1.5% × N。一轮消耗掉 f 之后留给下一轮的是 k × (1 − f)，要「循环后变多」就得 k × (1 − f) &gt; 1，所以可安全消耗额度 f = 1 − 1/k，只有 N ≥ 67 才有正额度。</p>
+      <p>价格预算 b 控制的是「单台价格最多占可动用库存的百分比」，一轮连锁建造最多吃掉 b × r ÷ (r − 1)，令它等于 f 就得到预算上限 b = f × (r − 1) ÷ r。推荐值是上限的 80%，向下取整到好填的位数。</p>
+      <p>只有非制作、非奢侈资源会被超时空带回；制作品与奢侈品不计入告警。来源：wiki.kittensgame.com 的 Price Ratio / Chronosphere 页。</p>
+    </details>
+  </div>
+
+  <footer>
+    Kitten Scientists 中文版（<a href="https://github.com/c940949574/kitten-scientists-94C">仓库主页</a> ·
+    <a href="https://github.com/c940949574/kitten-scientists-94C/releases/latest">下载最新版</a>）
+  </footer>
+</div>
+
+<script>
+"use strict";
+
+const REDUCTION = 0.01 + (1 + Math.sqrt(5)) / 200 + 16 / 900 + 0.02 + 0.0225;
+
+const BUILDINGS = [
+  { name: "牧场、木屋、豪宅、图书馆、学院", base: 1.15, reducible: true },
+  { name: "猫薄荷田、渡槽", base: 1.12, reducible: true },
+  { name: "天文台、脚手架", base: 1.10, reducible: true },
+  { name: "太空 / 宗教 / 时间", base: 1.25, reducible: false },
+];
+
+function effectiveRatio(base, withTech) {
+  return withTech && base.reducible ? base.base - REDUCTION : base.base;
+}
+
+function calc(N, r) {
+  const k = 0.015 * N;
+  const grows = k > 1;
+  const f = grows ? 1 - 1 / k : 0;
+  const b = grows ? (f * (r - 1)) / r : 0;
+  return { r, k, f, b, grows };
+}
+
+// 推荐值 = 上限的 80%，向下取整到好填的位数
+function recommend(b) {
+  const v = b * 0.8 * 100;
+  if (v >= 1) return (Math.floor(v * 10) / 10).toFixed(1) + "%";
+  if (v >= 0.1) return (Math.floor(v * 100) / 100).toFixed(2) + "%";
+  return (Math.floor(v * 1000) / 1000).toFixed(3) + "%";
+}
+
+function pct(x, d) { return (x * 100).toFixed(d) + "%"; }
+
+function render() {
+  const N = Math.max(0, Math.floor(Number(document.getElementById("chrono").value) || 0));
+  const withTech = document.getElementById("tech").checked;
+  const tbody = document.querySelector("#tbl tbody");
+  const banner = document.getElementById("banner");
+
+  let html = "";
+  const rows = BUILDINGS.map((b) => {
+    const r = effectiveRatio(b, withTech);
+    const c = calc(N, r);
+    return row(b.name, c);
+  });
+
+  const customInput = Number(document.getElementById("cr").value);
+  if (customInput > 1.00001) {
+    rows.push(row("自定义 r = " + customInput, calc(N, customInput)));
+  }
+
+  tbody.innerHTML = rows.join("");
+
+  const k = 0.015 * N;
+  if (N <= 0) {
+    banner.className = "banner bad";
+    banner.textContent = "还没有超时空传送仪：重置不会带回任何资源，价格预算无从谈起。";
+  } else if (k <= 1) {
+    banner.className = "banner bad";
+    banner.textContent = `当前 ${N} 座只带回 ${pct(k, 1)}（不足 100%）：不管预算填多小，循环后都在变穷。要到 67 座（带回 100.5%）才开始有正额度。`;
+  } else {
+    banner.className = "banner ok";
+    banner.textContent = `当前 ${N} 座带回 ${pct(k, 1)}。只要把预算控制在「推荐填写」一列以内，一轮建造吃掉的库存就一定小于超时空能补回来的部分。`;
+  }
+
+  function row(name, c) {
+    if (!c.grows) {
+      return `<tr><td>${name}</td><td>${c.r.toFixed(5)}</td><td>×</td>
+        <td class="bad">无</td><td class="bad">—</td><td class="bad big">别填</td></tr>`;
+    }
+    return `<tr><td>${name}</td><td>${c.r.toFixed(5)}</td><td>×${(c.r / (c.r - 1)).toFixed(2)}</td>
+      <td class="ok">${pct(c.f, 2)}</td><td>${pct(c.b, 3)}</td><td class="ok big">${recommend(c.b)}</td></tr>`;
+  }
+}
+
+document.getElementById("chrono").addEventListener("input", render);
+document.getElementById("tech").addEventListener("change", render);
+document.getElementById("cr").addEventListener("input", render);
+render();
+</script>
+</body>
+</html>
