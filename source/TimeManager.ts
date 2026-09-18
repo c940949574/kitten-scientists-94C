@@ -230,14 +230,15 @@ export class TimeManager {
 	private observeBrokenCryochambers() {
 		const broken = this._host.game.time.getVSU("usedCryochambers").val;
 
-		// A reset is the only thing that can raise this number, so a rising count
-		// marks the start of a new run and hands out another chamber. The very
-		// first observation can't tell a fresh reset from a game that had already
-		// been running, so it only records what it saw and leaves the chamber
-		// spent.
 		if (this._observedBrokenCryochambers === null) {
-			this._supplementUnspent = false;
+			// First observation after load. The save may already have been reloaded
+			// *post-reset*, in which case the broken chambers were never seen climb
+			// from a smaller number and the rising-edge test below would never fire —
+			// the supplement would be lost forever. So if there are already broken
+			// chambers on the first frame, treat that as a reset we owe a chamber for.
+			this._supplementUnspent = broken > 0;
 		} else if (this._observedBrokenCryochambers < broken) {
+			// A reset (or any break that raises the count) hands out another chamber.
 			this._supplementUnspent = true;
 		}
 
