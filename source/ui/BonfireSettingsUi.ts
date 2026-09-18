@@ -48,9 +48,36 @@ export class BonfireSettingsUi extends SettingsPanel<
 						]);
 				},
 				onSetTrigger: async () => {
-					const value = await Dialog.prompt(
+					// Both limiters in one dialog: the stock trigger and the price
+					// budget that caps how much of the spendable stock a single unit
+					// may cost. Prices grow with every unit we own, so the stock
+					// trigger alone can't express that.
+					const result = await Dialog.promptFields(
 						parent,
-						parent.host.engine.i18n("ui.trigger.prompt.percentage"),
+						[
+							{
+								explainer: parent.host.engine.i18n(
+									"ui.trigger.section.promptExplainer",
+								),
+								initialValue:
+									settings.trigger !== -1
+										? parent.host.renderPercentage(settings.trigger)
+										: "",
+								text: parent.host.engine.i18n("ui.trigger.prompt.percentage"),
+							},
+							{
+								explainer: parent.host.engine.i18n(
+									"ui.trigger.priceBudget.explainer",
+								),
+								initialValue:
+									settings.priceBudget.trigger !== -1
+										? parent.host.renderPercentage(settings.priceBudget.trigger)
+										: "",
+								text: parent.host.engine.i18n("ui.trigger.priceBudget.prompt", [
+									label,
+								]),
+							},
+						],
 						parent.host.engine.i18n("ui.trigger.section.prompt", [
 							label,
 							settings.trigger !== -1
@@ -61,49 +88,28 @@ export class BonfireSettingsUi extends SettingsPanel<
 									)
 								: parent.host.engine.i18n("ui.infinity"),
 						]),
-						settings.trigger !== -1
-							? parent.host.renderPercentage(settings.trigger)
-							: "",
-						parent.host.engine.i18n("ui.trigger.section.promptExplainer"),
 					);
 
-					if (value === undefined) {
+					if (!result) {
 						return;
 					}
 
-					if (value === "" || value.startsWith("-")) {
+					const [triggerValue, budgetValue] = result;
+
+					if (triggerValue === "" || triggerValue.startsWith("-")) {
 						settings.trigger = -1;
-						return;
+					} else {
+						settings.trigger =
+							parent.host.parsePercentage(triggerValue) ?? settings.trigger;
 					}
 
-					settings.trigger =
-						parent.host.parsePercentage(value) ?? settings.trigger;
-
-					// Limiter B, in the same panel: how much of the spendable stock
-					// a single unit may cost. Prices grow with every unit we own, so
-					// the stock trigger above can't express this on its own.
-					const budget = await Dialog.prompt(
-						parent,
-						parent.host.engine.i18n("ui.trigger.priceBudget.promptExplainer"),
-						parent.host.engine.i18n("ui.trigger.priceBudget.prompt", [label]),
-						settings.priceBudget.trigger !== -1
-							? parent.host.renderPercentage(settings.priceBudget.trigger)
-							: "",
-						parent.host.engine.i18n("ui.trigger.priceBudget.explainer"),
-					);
-
-					// Leaving the first prompt empty already means "no limits".
-					if (budget === undefined) {
-						return;
-					}
-
-					if (budget === "" || budget.startsWith("-")) {
+					if (budgetValue === "" || budgetValue.startsWith("-")) {
 						settings.priceBudget.enabled = false;
 						settings.priceBudget.trigger = -1;
 						return;
 					}
 
-					const parsedBudget = parent.host.parsePercentage(budget);
+					const parsedBudget = parent.host.parsePercentage(budgetValue);
 					if (parsedBudget === null) {
 						return;
 					}

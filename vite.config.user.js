@@ -6,8 +6,11 @@ import manifest from "./package.json" with { type: "json" };
 const filenameUserscript = "kitten-scientists.user.js";
 const filenameMeta = "kitten-scientists.meta.js";
 
-const downloadURL = `https://kitten-science.com/${filenameUserscript}`;
-const metaURL = `https://kitten-science.com/${filenameMeta}`;
+// Update links must point at this fork's releases, NOT upstream: with the
+// upstream links, a userscript manager's auto-update would silently replace
+// this build with the official English script.
+const downloadURL = `https://github.com/c940949574/kitten-scientists-94C/releases/latest/download/kitten-scientists-zh-cn.user.js`;
+const metaURL = `https://github.com/c940949574/kitten-scientists-94C/releases/latest/download/kitten-scientists-zh-cn.user.js`;
 
 const PAYLOAD = JSON.stringify(
 	readFileSync("./output/kitten-scientists.inject.js", "utf-8"),

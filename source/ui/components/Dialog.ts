@@ -197,6 +197,72 @@ export class Dialog extends UiComponent<HTMLDialogElement> {
 		});
 	}
 
+	/**
+	 * Like {@link prompt}, but shows several labeled inputs in a single dialog.
+	 *
+	 * Resolves with one value per field, in order, or `undefined` when the
+	 * dialog was cancelled. Values are read directly from the inputs when the
+	 * dialog is confirmed, so an uncommitted edit is not lost.
+	 */
+	static async promptFields(
+		parent: UiComponent,
+		fields: ReadonlyArray<{
+			readonly explainer?: string;
+			readonly initialValue?: string;
+			readonly text: string;
+		}>,
+		title?: string,
+	): Promise<readonly string[] | undefined> {
+		return new Promise((resolve) => {
+			const inputs: Input[] = [];
+
+			const dialog = new Dialog(parent, {
+				hasCancel: true,
+				hasClose: false,
+				onCancel: () => {
+					resolve(undefined);
+				},
+				onConfirm: () => {
+					resolve(inputs.map((input) => input.element[0].value));
+				},
+				prompt: false,
+			});
+
+			const children: UiComponentInterface[] = [];
+			if (title) {
+				children.push(new HeaderListItem(parent, title));
+			}
+
+			for (const [index, field] of fields.entries()) {
+				children.push(new Paragraph(parent, field.text));
+				if (field.explainer) {
+					children.push(
+						new Container(parent, {
+							classes: [stylesExplainer.explainer],
+						}).addChildren([new Paragraph(parent, field.explainer)]),
+					);
+				}
+
+				const input = new Input(parent, {
+					onEnter: () => {
+						dialog.close();
+						resolve(inputs.map((i) => i.element[0].value));
+					},
+					onEscape: () => {
+						dialog.close();
+						resolve(undefined);
+					},
+					selected: index === 0,
+					value: field.initialValue ?? "",
+				});
+				inputs.push(input);
+				children.push(input);
+			}
+
+			dialog.addChildrenContent(children).showModal();
+		});
+	}
+
 	static async confirm(
 		parent: UiComponent,
 		text: string,
