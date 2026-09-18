@@ -91,7 +91,8 @@ export class TradeSettingsUi extends SettingsPanel<
 						return;
 					}
 
-					settings.trigger = parent.host.parsePercentage(value);
+					settings.trigger =
+						parent.host.parsePercentage(value) ?? settings.trigger;
 				},
 				onUnCheck: (_isBatchProcess?: boolean) => {
 					parent.host.engine.imessage("status.auto.disable", [label]);
@@ -329,7 +330,7 @@ export class TradeSettingsUi extends SettingsPanel<
 						return;
 					}
 
-					option.trigger = parent.host.parsePercentage(value);
+					option.trigger = parent.host.parsePercentage(value) ?? option.trigger;
 				},
 				onUnCheck: () => {
 					parent.host.engine.imessage("status.sub.disable", [label]);

@@ -49,6 +49,21 @@ export class TimeManager {
 	private readonly _bulkManager: BulkPurchaseHelper;
 	private readonly _workshopManager: WorkshopManager;
 
+	/**
+	 * How many broken cryochambers were seen on the previous observation.
+	 *
+	 * `null` until the first observation has been made.
+	 */
+	private _observedBrokenCryochambers: number | null = null;
+
+	/**
+	 * Is the one chamber that may be built per reset still unspent?
+	 *
+	 * This is deliberately not part of the settings: it is a reading of where in
+	 * the reset cycle we are, not something the player configures.
+	 */
+	private _supplementUnspent = false;
+
 	constructor(
 		host: KittenScientists,
 		workshopManager: WorkshopManager,
@@ -203,7 +218,100 @@ export class TimeManager {
 		return this._host.game.time.getVSU(name as VoidSpaceUpgrade);
 	}
 
+	/**
+	 * Watch how many cryochambers are broken, so that a reset gets noticed.
+	 *
+	 * This runs on every frame that this automation is switched on, including
+	 * the ones that never get as far as repairing anything. A reset is only ever
+	 * recognised by watching the number climb, and a frame that returned early
+	 * is exactly the frame a reset lands on: the chambers only become broken
+	 * once the reset has happened.
+	 */
+	private observeBrokenCryochambers() {
+		const broken = this._host.game.time.getVSU("usedCryochambers").val;
+
+		// A reset is the only thing that can raise this number, so a rising count
+		// marks the start of a new run and hands out another chamber. The very
+		// first observation can't tell a fresh reset from a game that had already
+		// been running, so it only records what it saw and leaves the chamber
+		// spent.
+		if (this._observedBrokenCryochambers === null) {
+			this._supplementUnspent = false;
+		} else if (this._observedBrokenCryochambers < broken) {
+			this._supplementUnspent = true;
+		}
+
+		this._observedBrokenCryochambers = broken;
+	}
+
+	/**
+	 * Would the game let us build another cryochamber right now?
+	 *
+	 * @returns `true` if the build is unlocked and we can pay for it.
+	 */
+	private canBuildCryochamber(): boolean {
+		const controller = new classes.ui.time.VoidSpaceBtnController(
+			this._host.game,
+		) as VoidSpaceBtnController;
+		const model = controller.fetchModel({
+			controller,
+			id: this._host.game.getUnlockByName("cryochambers", "voidSpace").name,
+		});
+
+		return Boolean(model.enabled) && controller.hasResources(model);
+	}
+
+	/**
+	 * Build a single additional cryochamber before the repairs start.
+	 *
+	 * Right after a reset this is the cheaper way to end up with more chambers:
+	 * the price of a new one only climbs with the number of chambers already
+	 * standing, which a reset empties, while every repair makes the next repair
+	 * dearer. So building one while broken chambers are still lying around buys
+	 * more than repairing one does.
+	 *
+	 * Only one chamber is built per reset, which `observeBrokenCryochambers()`
+	 * keeps track of.
+	 */
+	buildBeforeRepairing() {
+		if (!this.settings.fixCryochambers.buildBeforeRepair.enabled) {
+			return;
+		}
+
+		if (!this._supplementUnspent) {
+			return;
+		}
+
+		const broken = this._host.game.time.getVSU("usedCryochambers").val;
+
+		// Every standing cryochamber needs a chronosphere to sustain it, and a
+		// broken one comes back as a standing one once it is repaired. So while
+		// the broken ones alone already cover every slot there is, repairing them
+		// is all that is needed and another chamber would only sit unused.
+		const supportedCryochambers =
+			this._host.game.bld.getBuildingExt("chronosphere").meta.val;
+		if (supportedCryochambers <= broken) {
+			return;
+		}
+
+		// Only spend the chamber once it can actually be paid for. Coming back on
+		// a later frame keeps the supplement available, instead of dropping it on
+		// a purchase the game would refuse.
+		if (!this.canBuildCryochamber()) {
+			return;
+		}
+
+		this.build("cryochambers", TimeItemVariant.VoidSpace, 1);
+		this._supplementUnspent = false;
+	}
+
 	fixCryochambers() {
+		// Keep watching the broken chambers on every frame, including the ones
+		// that bail out below. A reset is only ever noticed by watching the
+		// number rise, and the frames that have nothing to repair are the ones a
+		// reset lands on.
+		this.observeBrokenCryochambers();
+
 		// Optionally require an active source of temporal flux before repairing:
 		// without one, every repair would drain flux that never comes back.
 		if (
@@ -217,6 +325,8 @@ export class TimeManager {
 			return;
 		}
 
+		this.buildBeforeRepairing();
+
 		const prices = mustExist(
 			this._host.game.time.getVSU("usedCryochambers").fixPrices,
 		);
@@ -228,8 +338,11 @@ export class TimeManager {
 		// temporal flux storage. A value of 0 (or less) means "don't limit repairs
 		// at all".
 		//
-		// This has to be re-evaluated for every single repair: checking it only once
-		// before the loop would allow a run of repairs to spend far below the limit.
+		// Resolving the limit once is enough, because neither trigger nor maximum
+		// moves while this runs. What has to be checked for every single repair is
+		// the flux that is still left, which `staysAboveLimit` below reads afresh;
+		// deciding that once before the loop would let a run of repairs spend far
+		// below the limit.
 		const minimumTemporalFlux = resolveLimit(
 			this.settings.fixCryochambers.trigger,
 			this.settings.fixCryochambers.isPercentage,

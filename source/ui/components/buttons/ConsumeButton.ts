@@ -47,7 +47,7 @@ export class ConsumeButton extends Button {
 					return;
 				}
 
-				setting.consume = parent.host.parsePercentage(value);
+				setting.consume = parent.host.parsePercentage(value) ?? setting.consume;
 			},
 			onRefresh: () => {
 				const consumeValue = this.host.renderPercentage(

@@ -54,7 +54,8 @@ export class TimeSkipHeatSettingsUi extends SettingsPanel<
 						return;
 					}
 
-					settings.trigger = parent.host.parsePercentage(value);
+					settings.trigger =
+						parent.host.parsePercentage(value) ?? settings.trigger;
 				},
 				onUnCheck: (_isBatchProcess?: boolean) => {
 					parent.host.engine.imessage("status.auto.disable", [label]);

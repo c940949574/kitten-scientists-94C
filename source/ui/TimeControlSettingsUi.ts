@@ -95,7 +95,8 @@ export class TimeControlSettingsUi extends SettingsPanel<TimeControlSettings> {
 					}
 
 					this.setting.accelerateTime.trigger =
-						this.host.parsePercentage(value);
+						this.host.parsePercentage(value) ??
+						this.setting.accelerateTime.trigger;
 				},
 				onUnCheck: () => {
 					this.host.engine.imessage("status.sub.disable", [accelerateLabel]);

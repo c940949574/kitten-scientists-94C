@@ -31,8 +31,13 @@ export class TimeControlManager {
 	 *
 	 * The interface is only refreshed on demand, so the acquisition settings show
 	 * the maximum they detected when they were last drawn.
+	 *
+	 * `null` marks "never reported yet". It has to be a value that compares equal
+	 * to itself: with `NaN` as the sentinel, `NaN !== NaN` would stay true no
+	 * matter what was stored, and every frame would repaint the whole interface
+	 * whenever the game reports `NaN` for the maximum.
 	 */
-	private _reportedTemporalFluxMaximum = Number.NaN;
+	private _reportedTemporalFluxMaximum: number | undefined | null = null;
 
 	constructor(
 		host: KittenScientists,

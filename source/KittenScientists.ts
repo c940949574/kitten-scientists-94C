@@ -230,17 +230,20 @@ export class KittenScientists {
 			return -1;
 		}
 
+		// A negative value expresses "no limit" here, just like it always has.
+		// This has to be answered before the input is parsed: the syntax accepted
+		// for absolute values is unsigned, so anything starting with a minus sign
+		// would otherwise be rejected as input that isn't a number at all.
+		if (value.trim().startsWith("-")) {
+			return -1;
+		}
+
 		// Anything that isn't a number at all is reported the same way as an empty
 		// value, so callers which fall back to their previous value with `??`
 		// (all `parseAbsolute` call sites) don't end up storing `NaN`.
 		const entry = parseAbsoluteEntry(value);
 		if (entry === null) {
 			return null;
-		}
-
-		// A negative value expresses "no limit" here, just like it always has.
-		if (value.trim().startsWith("-")) {
-			return -1;
 		}
 
 		return entry.value;
@@ -255,17 +258,22 @@ export class KittenScientists {
 	 * Turns a string like 52.7 into the number 0.527
 	 *
 	 * The same syntax as `parseFloat` is accepted, where the trailing percentage
-	 * sign is optional. A value that exceeds 100% is clamped to 100%, and input
-	 * that isn't a number at all is reported as `NaN`, which callers have to
-	 * handle.
+	 * sign is optional. A value that exceeds 100% is clamped to 100%.
+	 *
+	 * Input that isn't a number at all is reported as `null`, so that callers
+	 * keep their previous value with `??`. Returning `NaN` instead would defeat
+	 * that: `??` only catches `null` and `undefined`, so a `NaN` would sail
+	 * straight through into the setting, where every comparison it takes part in
+	 * turns false and quietly disables the automation.
 	 *
 	 * @param value - String representation of a percentage.
-	 * @returns A number between 0 and 1 representing the described percentage.
+	 * @returns A number between 0 and 1 representing the described percentage,
+	 * or `null` if the input isn't a valid number.
 	 */
-	parsePercentage(value: string): number {
+	parsePercentage(value: string): number | null {
 		const entry = parsePercentageEntry(value);
 		if (entry === null || entry.kind === "invalid") {
-			return Number.NaN;
+			return null;
 		}
 
 		// A value that was entered as an absolute value still describes the same
@@ -300,6 +308,15 @@ export class KittenScientists {
 
 	/**
 	 * Turns a number like 0.527 into a string like 52.7
+	 *
+	 * The percentage sign is appended here rather than being produced by `Intl`,
+	 * because that is the only way `withUnit` can be honoured in every locale:
+	 * `style: "percent"` always prints a sign of its own. Rendering the value
+	 * ourselves is also what keeps the decimals the setting actually holds. That
+	 * matters beyond display, because a dialog pre-fills itself with this string;
+	 * rounding 12.7% into 13% here means the user's next confirmation silently
+	 * stores 13%.
+	 *
 	 * @param value - The number to render as a string.
 	 * @param locale - The locale in which to render the percentage.
 	 * @param withUnit - Should the percentage sign be included in the output?
@@ -314,9 +331,15 @@ export class KittenScientists {
 			return "∞";
 		}
 
+		const unit = withUnit ? "%" : "";
+		const scaled = value * 100;
+
 		return locale !== "invariant"
-			? new Intl.NumberFormat(locale, { style: "percent" }).format(value)
-			: `${this.game.getDisplayValueExt(value * 100, false, false)}${withUnit ? "%" : ""}`;
+			? `${new Intl.NumberFormat(locale, {
+					maximumFractionDigits: 2,
+					style: "decimal",
+				}).format(scaled)}${unit}`
+			: `${this.game.getDisplayValueExt(scaled, false, false)}${unit}`;
 	}
 
 	renderFloat(

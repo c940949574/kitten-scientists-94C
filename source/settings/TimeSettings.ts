@@ -63,14 +63,31 @@ export class FixCryochambersSettings extends SettingThreshold {
 	 */
 	onlyWithFluxProduction: Setting;
 
+	/**
+	 * Build another cryochamber before repairing the broken ones.
+	 *
+	 * A new cryochamber is cheapest right after a reset, because its price only
+	 * climbs with the number of chambers already standing, and a reset empties
+	 * that count. Repairs work the other way around: every chamber brought back
+	 * makes the next one dearer. So while broken chambers are still lying
+	 * around, spending on a new one first is the cheaper way to grow.
+	 *
+	 * At most one chamber is built per reset. See
+	 * `TimeManager.buildBeforeRepairing()` for how the building is capped by the
+	 * number of chronospheres that can sustain it.
+	 */
+	buildBeforeRepair: Setting;
+
 	constructor(
 		enabled = false,
 		threshold = 0,
 		onlyWithFluxProduction = new Setting(false),
+		buildBeforeRepair = new Setting(false),
 		triggerIsPercentage?: boolean,
 	) {
 		super(enabled, threshold, triggerIsPercentage);
 		this.onlyWithFluxProduction = onlyWithFluxProduction;
+		this.buildBeforeRepair = buildBeforeRepair;
 	}
 
 	load(settings: Maybe<Partial<FixCryochambersSettings>>) {
@@ -80,6 +97,7 @@ export class FixCryochambersSettings extends SettingThreshold {
 
 		super.load(settings);
 		this.onlyWithFluxProduction.load(settings.onlyWithFluxProduction);
+		this.buildBeforeRepair.load(settings.buildBeforeRepair);
 	}
 }
 

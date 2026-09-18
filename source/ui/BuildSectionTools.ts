@@ -140,7 +140,7 @@ export const BuildSectionTools = {
 						return;
 					}
 
-					option.trigger = parent.host.parsePercentage(value);
+					option.trigger = parent.host.parsePercentage(value) ?? option.trigger;
 					await options?.onSetTrigger?.call(this);
 				},
 				onUnCheck: (isBatchProcess?: boolean) => {
@@ -225,7 +225,7 @@ export const BuildSectionTools = {
 					return;
 				}
 
-				option.trigger = parent.host.parsePercentage(value);
+				option.trigger = parent.host.parsePercentage(value) ?? option.trigger;
 				await options?.onSetTrigger?.call(this);
 			},
 			onUnCheck: (isBatchProcess?: boolean) => {

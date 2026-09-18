@@ -72,7 +72,8 @@ export class TechSettingsUi extends SettingsPanel<
 						return;
 					}
 
-					settings.trigger = parent.host.parsePercentage(value);
+					settings.trigger =
+						parent.host.parsePercentage(value) ?? settings.trigger;
 				},
 				onUnCheck: (_isBatchProcess?: boolean) => {
 					parent.host.engine.imessage("status.auto.disable", [label]);
@@ -180,7 +181,7 @@ export class TechSettingsUi extends SettingsPanel<
 							return;
 						}
 
-						option.trigger = this.host.parsePercentage(value);
+						option.trigger = this.host.parsePercentage(value) ?? option.trigger;
 					},
 					onUnCheck: () => {
 						this.host.engine.imessage("status.sub.disable", [tech.label]);

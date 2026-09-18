@@ -113,7 +113,8 @@ export class VillageSettingsUi extends SettingsPanel<VillageSettings> {
 						return;
 					}
 
-					this.setting.hunt.trigger = this.host.parsePercentage(value);
+					this.setting.hunt.trigger =
+						this.host.parsePercentage(value) ?? this.setting.hunt.trigger;
 				},
 				onUnCheck: () => {
 					this.host.engine.imessage("status.sub.disable", [
@@ -190,7 +191,8 @@ export class VillageSettingsUi extends SettingsPanel<VillageSettings> {
 					}
 
 					this.setting.promoteKittens.trigger =
-						this.host.parsePercentage(value);
+						this.host.parsePercentage(value) ??
+						this.setting.promoteKittens.trigger;
 				},
 				onUnCheck: () => {
 					this.host.engine.imessage("status.sub.disable", [

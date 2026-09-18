@@ -89,7 +89,8 @@ export class TimeSettingsUi extends SettingsPanel<
 						return;
 					}
 
-					settings.trigger = parent.host.parsePercentage(value);
+					settings.trigger =
+						parent.host.parsePercentage(value) ?? settings.trigger;
 				},
 				onUnCheck: (_isBatchProcess?: boolean) => {
 					parent.host.engine.imessage("status.auto.disable", [label]);
@@ -214,8 +215,32 @@ export class TimeSettingsUi extends SettingsPanel<
 			),
 		);
 
-		// The sub-menu of the cryochamber repair: only repair while temporal flux
-		// is actually being produced.
+		// The sub-menu of the cryochamber repair, in the order the work happens:
+		// a chamber is built first, then the broken ones are repaired.
+
+		// Build another chamber while the broken ones are still lying around.
+		const buildBeforeRepair = new SettingListItem(
+			this,
+			this.setting.fixCryochambers.buildBeforeRepair,
+			this.host.engine.i18n("option.fix.cry.buildBeforeRepair"),
+			{
+				onCheck: () => {
+					this.host.engine.imessage("status.sub.enable", [
+						this.host.engine.i18n("option.fix.cry.buildBeforeRepair"),
+					]);
+				},
+				onUnCheck: () => {
+					this.host.engine.imessage("status.sub.disable", [
+						this.host.engine.i18n("option.fix.cry.buildBeforeRepair"),
+					]);
+				},
+			},
+		);
+		buildBeforeRepair.element[0].title = this.host.engine.i18n(
+			"ui.option.fix.cry.buildBeforeRepair.title",
+		);
+
+		// Only repair while temporal flux is actually being produced.
 		const onlyWithFluxProduction = new SettingListItem(
 			this,
 			this.setting.fixCryochambers.onlyWithFluxProduction,
@@ -240,7 +265,7 @@ export class TimeSettingsUi extends SettingsPanel<
 			new SettingsList(this, {
 				hasDisableAll: false,
 				hasEnableAll: false,
-			}).addChildren([onlyWithFluxProduction]),
+			}).addChildren([buildBeforeRepair, onlyWithFluxProduction]),
 		);
 
 		this.addChildrenContent([

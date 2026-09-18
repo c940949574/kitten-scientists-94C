@@ -9,8 +9,12 @@
  * - `52` – a plain number
  * - `52.7` – a number with decimals
  * - `1e42` – scientific notation, including a negative or explicit exponent
- * - `1.5K`, `2M`, `3G`, `4T`, `5P` – the postfixes the game uses for display
+ * - `1.5K`, `2M`, `3G`, `4T`, `5P`, `6E`, `7Z`, `8Y` – the postfixes the game
+ *   uses for display
  * - `∞` – the game's symbol for "no limit"
+ *
+ * The mantissa and the postfix may be combined, so `1e3K` is accepted and means
+ * the same as `1M`.
  *
  * Supported by the two percentage-aware fields (see `parsePercentageInput`):
  *
@@ -46,10 +50,10 @@ export type ParseEntryResult = ParsedEntry | null;
 /**
  * Matches the syntax accepted by `parseAbsoluteEntry`.
  *
- * The first group holds the value itself, as a mantissa with an optional
- * exponent, followed by an optional postfix.
+ * The mantissa and its exponent are captured separately, so that the exponent
+ * of a postfix can be folded into an exponent the input already carries.
  */
-export const NUMBER_PATTERN = /^(\d+(?:\.\d+)?(?:e[+-]?\d+)?)([KMGTP]?)$/i;
+export const NUMBER_PATTERN = /^(\d+(?:\.\d+)?)(?:e([+-]?\d+))?([KMGTPEZY]?)$/i;
 
 /** The multiplier for every postfix the game uses for display. */
 const POSTFIX_FACTORS: Record<string, number> = {
@@ -59,29 +63,43 @@ const POSTFIX_FACTORS: Record<string, number> = {
 	G: 1000 ** 3,
 	T: 1000 ** 4,
 	P: 1000 ** 5,
+	E: 1000 ** 6,
+	Z: 1000 ** 7,
+	Y: 1000 ** 8,
 };
 
 /**
- * Combine a mantissa and its postfix multiplier into a number.
+ * Combine a mantissa, its exponent and a postfix multiplier into a number.
  *
- * The multiplication is done up front by combining the mantissa with the
- * multiplier before it is parsed. `Number("1e308") * 1000` would overflow into
- * `Infinity`, while `Number("1e308" + "e3")` still reports the highest value
- * the engine can represent. The exponent is therefore transferred to the
- * numeric literal instead of the parsed value.
+ * The exponents are added up before anything is parsed, so that the result is
+ * assembled as a single numeric literal: `Number("1e308") * 1000` would
+ * overflow into `Infinity`, while `Number("1e308e3")` still reports the highest
+ * value the engine can represent. Folding the exponents together instead of
+ * appending a second one is what makes inputs like `1e3K` (which the mantissa
+ * owns an exponent of 3 and the postfix another 3, giving `1e6`) come out
+ * right; appending them would produce the literal `1e3e3`, which is not a
+ * number at all.
  *
- * @param mantissa - The value without its postfix, e.g. `1.5e10`.
+ * @param mantissa - The value without its exponent or postfix, e.g. `1.5`.
+ * @param exponent - The exponent the mantissa already carries, e.g. `10` for
+ * `1.5e10`. May be absent.
  * @param factor - The multiplier of the postfix, e.g. `1000` for `K`.
  * @returns The parsed value, or `null` if it isn't representable in a number.
  */
-function applyFactor(mantissa: string, factor: number): number | null {
-	if (factor === 1) {
-		const value = Number(mantissa);
-		return Number.isFinite(value) ? value : null;
-	}
+function applyFactor(
+	mantissa: string,
+	exponent: string | undefined,
+	factor: number,
+): number | null {
+	// The postfixes are exact powers of ten, but they grow past 2^53, where the
+	// decimal logarithm can land a hair off the integer it should be.
+	const totalExponent =
+		Number.parseInt(exponent ?? "0", 10) + Math.round(Math.log10(factor));
+	const literal =
+		totalExponent === 0 ? mantissa : `${mantissa}e${totalExponent}`;
 
-	const exponent = Math.log10(factor);
-	return applyFactor(`${mantissa}e${exponent}`, 1);
+	const value = Number(literal);
+	return Number.isFinite(value) ? value : null;
 }
 
 /**
@@ -104,7 +122,11 @@ export function parseAbsoluteEntry(value: string): ParsedAbsolute | null {
 		return null;
 	}
 
-	const number = applyFactor(match[1], POSTFIX_FACTORS[match[2].toUpperCase()]);
+	const number = applyFactor(
+		match[1],
+		match[2],
+		POSTFIX_FACTORS[match[3].toUpperCase()],
+	);
 	if (number === null || number < 0) {
 		return null;
 	}
