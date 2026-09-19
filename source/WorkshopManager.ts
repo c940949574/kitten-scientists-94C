@@ -17,6 +17,18 @@ import type { ResourceManager, UnsafeResource } from "./types/resources.js";
 import type { UnsafeCraft, UnsafeUpgrade } from "./types/workshop.js";
 import { UpgradeManager } from "./UpgradeManager.js";
 
+/**
+ * Craft amounts above this get a relative safety margin applied.
+ *
+ * At these magnitudes, `stock / unitPrice` rounds up just enough that
+ * multiplying it back exceeds the stock, and the game's `hasRes` check then
+ * rejects the craft. The margin is orders of magnitude larger than that
+ * rounding error, yet invisible at ordinary sizes, so it is only applied where
+ * it can matter.
+ */
+const CraftAmountSafetyThreshold = 1e12;
+const CraftAmountSafetyFactor = 1 - 1e-9;
+
 export class WorkshopManager extends UpgradeManager implements Automation {
 	readonly settings: WorkshopSettings;
 
@@ -345,9 +357,21 @@ export class WorkshopManager extends UpgradeManager implements Automation {
 			const craft = this.getCraft(order.name);
 			const ratio = this._host.game.getResCraftRatio(craft.name);
 
+			// At extreme magnitudes (stockpiles around 1e20 and above), the
+			// quotient `stock / unit price` rounds up just enough that
+			// multiplying it back exceeds the stock, and the game's own
+			// `hasRes` check then refuses the craft with "Failed trying to
+			// craft …". A relative margin far larger than that rounding error
+			// keeps the request affordable; amounts below the threshold are
+			// untouched, so nothing is lost at ordinary sizes.
+			const amount =
+				CraftAmountSafetyThreshold < order.amount
+					? Math.floor(order.amount * CraftAmountSafetyFactor)
+					: order.amount;
+
 			const craftSucceeded = this._host.game.workshop.craft(
 				craft.name,
-				order.amount,
+				amount,
 				true,
 				false,
 				false,
@@ -355,7 +379,7 @@ export class WorkshopManager extends UpgradeManager implements Automation {
 			if (!craftSucceeded) {
 				console.error(
 					...cl(
-						`Failed trying to craft ${order.amount}x ${order.name}! This is a problem and should be reported.`,
+						`Failed trying to craft ${amount}x ${order.name}! This is a problem and should be reported.`,
 					),
 				);
 				continue;
@@ -367,7 +391,7 @@ export class WorkshopManager extends UpgradeManager implements Automation {
 
 			// Determine actual amount after crafting upgrades
 			const craftedAmount = Number.parseFloat(
-				(order.amount * (1 + ratio)).toFixed(2),
+				(amount * (1 + ratio)).toFixed(2),
 			);
 
 			this._host.engine.storeForSummary("craft", craftedAmount, resourceName);

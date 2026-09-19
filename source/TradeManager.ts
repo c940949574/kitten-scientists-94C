@@ -820,18 +820,20 @@ export class TradeManager implements Automation {
 				.getChallenge("pacifism")
 				.getTradeBonusEffect(this._host.game);
 
-		// Calculate for 100 trades, to easily derive a percentage.
-		const tradeResults =
-			this._host.game.diplomacy.calculateFailedNormalBonusTrades(
-				this._host.game.diplomacy.getFinalStanding(race),
-				100,
-				0,
-			);
+		// Expected share of trades that succeed. The game's own helper
+		// (`calculateFailedNormalBonusTrades`) answers this by drawing a random
+		// sample, which is both noisy and — on some game builds — logs
+		// "Something didn't add up correctly" when the sampled values don't
+		// round-trip. The expectation is closed-form: a negative standing fails
+		// trades with probability `-standing`, so the success share is
+		// `clamp(1 + standing, 0, 1)`.
+		const standing = this._host.game.diplomacy.getFinalStanding(race);
+		const successRatio = Number.isFinite(standing)
+			? Math.min(1, Math.max(0, 1 + standing))
+			: 0;
 		const spiceChance = this._host.game.diplomacy.getSpiceTradeChance(race);
 		const blueprintTradeChance =
 			this._host.game.diplomacy.getBlueprintTradeChance(race);
-
-		const successRatio = (tradeResults.normal + tradeResults.bonus) / 100;
 
 		const output: Partial<Record<Resource, number>> = {};
 		for (const item of race.sells) {
