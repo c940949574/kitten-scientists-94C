@@ -208,6 +208,8 @@ export class Dialog extends UiComponent<HTMLDialogElement> {
 		parent: UiComponent,
 		fields: ReadonlyArray<{
 			readonly explainer?: string;
+			/** Render the explainer as HTML; only for trusted i18n content. */
+			readonly explainerHtml?: boolean;
 			readonly initialValue?: string;
 			readonly text: string;
 		}>,
@@ -239,7 +241,11 @@ export class Dialog extends UiComponent<HTMLDialogElement> {
 					children.push(
 						new Container(parent, {
 							classes: [stylesExplainer.explainer],
-						}).addChildren([new Paragraph(parent, field.explainer)]),
+						}).addChildren([
+							new Paragraph(parent, field.explainer, {
+								html: field.explainerHtml,
+							}),
+						]),
 					);
 				}
 

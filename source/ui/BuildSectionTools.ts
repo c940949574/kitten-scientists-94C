@@ -191,21 +191,33 @@ const confirmChronoWarning = async (
  * including the "fewer than 67 chronospheres" case, where the regular
  * warning already covers the situation.
  */
-const priceBudgetRecommendLine = (
+export const priceBudgetRecommendLine = (
 	host: KittenScientists,
 	priceRatio?: () => number | undefined,
 ): string => {
 	const recommend = recommendedPriceBudget(host, priceRatio?.());
 	if (!recommend) {
-		return "";
+		return host.engine.i18n("ui.trigger.priceBudget.noRecommend");
 	}
 
-	return `\n${host.engine.i18n("ui.trigger.priceBudget.recommend", [
+	return `<b>${host.engine.i18n("ui.trigger.priceBudget.recommend", [
 		host.renderAbsolute(recommend.chronos),
 		host.renderPercentage(recommend.budget, undefined, true),
 		host.renderPercentage(recommend.limit, undefined, true),
-	])}`;
+	])}</b>`;
 };
+
+/**
+ * The currently configured price budget, for the "(Current: …)" display.
+ * Unset or sentinel values render as a localized "not set".
+ */
+export const priceBudgetCurrentValue = (
+	host: KittenScientists,
+	budget: SettingTrigger,
+): string =>
+	Number.isFinite(budget.trigger) && budget.trigger >= 0
+		? host.renderPercentage(budget.trigger, undefined, true)
+		: host.engine.i18n("ui.trigger.priceBudget.current.unset");
 
 /**
  * The tooltip lines a section's price budget contributes: the budget itself
@@ -276,9 +288,11 @@ export const BuildSectionTools = {
 					text: host.engine.i18n("ui.trigger.prompt.percentage"),
 				},
 				{
-					explainer:
-						host.engine.i18n("ui.trigger.priceBudget.explainer") +
+					explainer: host.engine.i18n("ui.trigger.priceBudget.explainer", [
+						priceBudgetCurrentValue(host, priceBudget),
 						priceBudgetRecommendLine(host, priceRatio),
+					]),
+					explainerHtml: true,
 					initialValue:
 						priceBudget.enabled && priceBudget.trigger !== -1
 							? host.renderPercentage(priceBudget.trigger)
@@ -442,11 +456,15 @@ export const BuildSectionTools = {
 						text: parent.host.engine.i18n("ui.trigger.prompt.percentage"),
 					},
 					{
-						explainer:
-							parent.host.engine.i18n(
-								"ui.trigger.priceBudget.build.explainer",
-								[label],
-							) + priceBudgetRecommendLine(parent.host, priceRatio),
+						explainer: parent.host.engine.i18n(
+							"ui.trigger.priceBudget.build.explainer",
+							[
+								label,
+								priceBudgetCurrentValue(parent.host, budgetSetting),
+								priceBudgetRecommendLine(parent.host, priceRatio),
+							],
+						),
+						explainerHtml: true,
 						initialValue:
 							budgetSetting.enabled && budgetSetting.trigger !== -1
 								? parent.host.renderPercentage(budgetSetting.trigger)
@@ -766,11 +784,15 @@ export const BuildSectionTools = {
 							text: parent.host.engine.i18n("ui.trigger.prompt.percentage"),
 						},
 						{
-							explainer:
-								parent.host.engine.i18n(
-									"ui.trigger.priceBudget.build.explainer",
-									[label],
-								) + priceBudgetRecommendLine(parent.host, priceRatio),
+							explainer: parent.host.engine.i18n(
+								"ui.trigger.priceBudget.build.explainer",
+								[
+									label,
+									priceBudgetCurrentValue(parent.host, budget),
+									priceBudgetRecommendLine(parent.host, priceRatio),
+								],
+							),
+							explainerHtml: true,
 							initialValue:
 								budget.enabled && budget.trigger !== -1
 									? parent.host.renderPercentage(budget.trigger)

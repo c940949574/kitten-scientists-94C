@@ -3,6 +3,12 @@ import { UiComponent, type UiComponentOptions } from "./UiComponent.js";
 export type ParagraphOptions = ThisType<Paragraph> &
 	UiComponentOptions & {
 		readonly classes?: Array<string>;
+		/**
+		 * Render the text as HTML instead of plain text.
+		 * Only for trusted, static content (our own i18n bundles) — never for
+		 * user input.
+		 */
+		readonly html?: boolean;
 	};
 
 export class Paragraph extends UiComponent {
@@ -18,7 +24,12 @@ export class Paragraph extends UiComponent {
 	constructor(parent: UiComponent, text: string, options?: ParagraphOptions) {
 		super(parent, { ...options });
 
-		this.element = $<HTMLParagraphElement>("<p/>").text(text);
+		this.element = $<HTMLParagraphElement>("<p/>");
+		if (options?.html === true) {
+			this.element.html(text);
+		} else {
+			this.element.text(text);
+		}
 
 		for (const className of options?.classes ?? []) {
 			this.element.addClass(className);

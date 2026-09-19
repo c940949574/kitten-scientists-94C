@@ -245,6 +245,15 @@ export class TradeManager implements Automation {
 
 		cultureVal = this._workshopManager.getValueAvailable("culture");
 
+		// Per-unit price budget: every embassy must individually fit within
+		// spendable culture × this share. Checked against the real stock at
+		// frame start — only gating the loop once would let a chain devour the
+		// whole stockpile (same lesson as the building price budget).
+		const budget = this.settings.buildEmbassies.priceBudget;
+		const budgetActive =
+			budget.enabled && Number.isFinite(budget.trigger) && budget.trigger >= 0;
+		const cultureSpendable = cultureVal;
+
 		const embassyBulk: Partial<
 			Record<
 				Race,
@@ -312,11 +321,13 @@ export class TradeManager implements Automation {
 					priceCoefficient *
 					1.15 ** (emBulk.currentEm + embassyFakeBought + emBulk.val);
 
-				if (nextPrice <= cultureVal) {
+				if (
+					nextPrice <= cultureVal &&
+					(!budgetActive || nextPrice <= cultureSpendable * budget.trigger)
+				) {
 					cultureVal -= nextPrice;
 					emBulk.priceSum += nextPrice;
 					emBulk.val += 1;
-					context.requestGameUiRefresh = true;
 				} else {
 					bulkTracker.splice(raceIndex, 1);
 					--raceIndex;
@@ -328,6 +339,7 @@ export class TradeManager implements Automation {
 			if (emBulk.val === 0) {
 				continue;
 			}
+			context.requestGameUiRefresh = true;
 			cultureVal = this._workshopManager.getValueAvailable("culture");
 			if (cultureVal < emBulk.priceSum) {
 				console.warn(

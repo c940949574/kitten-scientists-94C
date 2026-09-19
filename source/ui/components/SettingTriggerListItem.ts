@@ -18,6 +18,8 @@ export type SettingTriggerListItemOptions = ThisType<SettingTriggerListItem> &
 		readonly onRefreshTrigger?: () => void | Promise<void>;
 		readonly onSetTrigger: () => void | Promise<void>;
 		readonly renderLabelTrigger?: boolean;
+		/** Forwarded to the trigger button; see `TriggerButtonOptions.labelOverride`. */
+		readonly triggerLabelOverride?: () => string;
 	};
 
 export class SettingTriggerListItem<
@@ -47,6 +49,7 @@ export class SettingTriggerListItem<
 				? () => options.onRefreshTrigger?.call(this)
 				: undefined,
 			renderLabel: options?.renderLabelTrigger ?? true,
+			labelOverride: options?.triggerLabelOverride,
 		});
 		this.addChildrenHead([
 			new Container(parent, { classes: [stylesLabelListItem.fillSpace] }),

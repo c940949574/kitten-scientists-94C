@@ -14,6 +14,12 @@ export type TriggerButtonBehavior = "integer" | "percentage";
 export type TriggerButtonOptions = ThisType<TriggerButton> &
 	ButtonOptions & {
 		readonly renderLabel?: boolean;
+		/**
+		 * Replaces the default trigger display (plain percentage or integer).
+		 * Evaluated on every refresh, so it can incorporate live game state;
+		 * DOM writes are still cached by `updateLabel`.
+		 */
+		readonly labelOverride?: () => string;
 	};
 
 export class TriggerButton extends Button {
@@ -41,8 +47,9 @@ export class TriggerButton extends Button {
 		super(parent, "", Icons.Trigger, {
 			...options,
 			onRefresh: () => {
-				const triggerValue =
-					this.behavior === "integer"
+				const triggerValue = this.options?.labelOverride
+					? this.options.labelOverride.call(this)
+					: this.behavior === "integer"
 						? this.host.renderAbsolute(this.setting.trigger, "invariant")
 						: this.host.renderPercentage(
 								this.setting.trigger,

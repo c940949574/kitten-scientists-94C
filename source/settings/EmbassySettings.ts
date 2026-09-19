@@ -21,6 +21,15 @@ export type EmbassyRaceSettings = Record<Race, SettingMax>;
 export class EmbassySettings extends SettingTrigger {
 	races: EmbassyRaceSettings;
 
+	/**
+	 * Caps each embassy purchase at spendable culture × this share.
+	 *
+	 * Embassy prices grow with a fixed ratio of 1.15, so a value of 0.13%
+	 * keeps one automated cycle from consuming more than ~1% of the culture
+	 * stock. Checked per unit, like the building price budget.
+	 */
+	readonly priceBudget = new SettingTrigger(true, 0.0013);
+
 	constructor(enabled = false) {
 		super(enabled);
 		this.races = this.initRaces();
@@ -44,6 +53,8 @@ export class EmbassySettings extends SettingTrigger {
 		}
 
 		super.load(settings);
+
+		this.priceBudget.load(settings.priceBudget);
 
 		consumeEntriesPedantic(this.races, settings.races, (race, item) => {
 			race.enabled = item?.enabled ?? race.enabled;

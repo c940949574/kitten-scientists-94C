@@ -3,6 +3,10 @@ import type { SupportedLocale } from "../Engine.js";
 import type { EmbassySettings } from "../settings/EmbassySettings.js";
 import type { SettingMax, SettingOptions } from "../settings/Settings.js";
 import type { TradeSettings } from "../settings/TradeSettings.js";
+import {
+	priceBudgetCurrentValue,
+	priceBudgetRecommendLine,
+} from "./BuildSectionTools.js";
 import stylesButton from "./components/Button.module.css";
 import { Dialog } from "./components/Dialog.js";
 import { SettingMaxListItem } from "./components/SettingMaxListItem.js";
@@ -30,26 +34,68 @@ export class EmbassySettingsUi extends SettingsPanel<
 					parent.host.engine.imessage("status.auto.enable", [label]);
 				},
 				onSetTrigger: async () => {
-					const value = await Dialog.prompt(
+					const host = parent.host;
+					const result = await Dialog.promptFields(
 						parent,
-						parent.host.engine.i18n("ui.trigger.embassies.prompt"),
-						parent.host.engine.i18n("ui.trigger.embassies.promptTitle", [
-							parent.host.renderPercentage(
-								settings.trigger,
-								locale.selected,
-								true,
-							),
+						[
+							{
+								explainer: host.engine.i18n(
+									"ui.trigger.section.promptExplainer",
+								),
+								initialValue:
+									settings.trigger !== -1
+										? host.renderPercentage(settings.trigger)
+										: "",
+								text: host.engine.i18n("ui.trigger.prompt.percentage"),
+							},
+							{
+								explainer: host.engine.i18n(
+									"ui.trigger.embassyBudget.explainer",
+									[
+										priceBudgetCurrentValue(host, settings.priceBudget),
+										priceBudgetRecommendLine(host, () => 1.15),
+									],
+								),
+								explainerHtml: true,
+								initialValue:
+									settings.priceBudget.enabled &&
+									settings.priceBudget.trigger !== -1
+										? host.renderPercentage(settings.priceBudget.trigger)
+										: "",
+								text: host.engine.i18n("ui.trigger.priceBudget.prompt", [
+									label,
+								]),
+							},
+						],
+						host.engine.i18n("ui.trigger.section.prompt", [
+							label,
+							settings.trigger !== -1
+								? host.renderPercentage(settings.trigger, locale.selected, true)
+								: host.engine.i18n("ui.infinity"),
 						]),
-						parent.host.renderPercentage(settings.trigger),
-						parent.host.engine.i18n("ui.trigger.embassies.promptExplainer"),
 					);
 
-					if (value === undefined || value === "" || value.startsWith("-")) {
+					if (!result) {
 						return;
 					}
 
-					settings.trigger =
-						parent.host.parsePercentage(value) ?? settings.trigger;
+					const [triggerValue, budgetValue] = result;
+					if (
+						triggerValue !== undefined &&
+						triggerValue !== "" &&
+						!triggerValue.startsWith("-")
+					) {
+						settings.trigger =
+							host.parsePercentage(triggerValue) ?? settings.trigger;
+					}
+					if (
+						budgetValue !== undefined &&
+						budgetValue !== "" &&
+						!budgetValue.startsWith("-")
+					) {
+						settings.priceBudget.trigger =
+							host.parsePercentage(budgetValue) ?? settings.priceBudget.trigger;
+					}
 				},
 				onUnCheck: (_isBatchProcess?: boolean) => {
 					parent.host.engine.imessage("status.auto.disable", [label]);

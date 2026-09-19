@@ -75,6 +75,22 @@ export class TimeControlSettingsUi extends SettingsPanel<TimeControlSettings> {
 						this.setting.accelerateTime.enabled &&
 						this.setting.accelerateTime.trigger === -1;
 				},
+				// 百分比 + 数字双显示：数字按当前通量上限实时换算。
+				// -1（不限制哨兵）保持原样，不做换算。
+				triggerLabelOverride: () => {
+					const trigger = this.setting.accelerateTime.trigger;
+					const percentage = this.host.renderPercentage(
+						trigger,
+						"invariant",
+						true,
+					);
+					if (trigger === -1) {
+						return percentage;
+					}
+					const fluxMax =
+						this.host.game.resPool.get("temporalFlux")?.maxValue ?? 0;
+					return `${percentage} | ${this.host.renderAbsolute(trigger * fluxMax, "invariant")}`;
+				},
 				onSetTrigger: async () => {
 					const value = await Dialog.prompt(
 						this,
