@@ -264,6 +264,7 @@ export class BonfireSettingsUi extends SettingsPanel<
 					},
 					() => resolvePriceRatio(parent.host, meta, "Bonfire"),
 					() => spendsPreservedResource(meta),
+					() => meta,
 				),
 				BuildSectionTools.getBuildOptionWithMax(
 					parent,
@@ -288,6 +289,7 @@ export class BonfireSettingsUi extends SettingsPanel<
 					},
 					() => resolvePriceRatio(parent.host, meta, "Bonfire"),
 					() => spendsPreservedResource(meta),
+					() => meta,
 				),
 			];
 		}
@@ -315,6 +317,7 @@ export class BonfireSettingsUi extends SettingsPanel<
 					},
 					() => resolvePriceRatio(parent.host, meta, "Bonfire"),
 					() => spendsPreservedResource(meta),
+					() => meta,
 				),
 			];
 		}

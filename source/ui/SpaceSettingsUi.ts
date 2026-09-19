@@ -146,6 +146,7 @@ export class SpaceSettingsUi extends SettingsPanel<
 									},
 									() => resolvePriceRatio(this.host, building, "Space"),
 									() => spendsPreservedResource(building),
+									() => building,
 								),
 							),
 					]),

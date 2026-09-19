@@ -176,6 +176,7 @@ export class ReligionSettingsUi extends SettingsPanel<
 					},
 					() => resolvePriceRatio(this.host, unicornPastureMeta, "Bonfire"),
 					() => spendsPreservedResource(unicornPastureMeta),
+					() => unicornPastureMeta,
 				),
 			],
 			...this.host.game.religion.zigguratUpgrades
@@ -210,6 +211,7 @@ export class ReligionSettingsUi extends SettingsPanel<
 								},
 								() => resolvePriceRatio(this.host, zigguratUpgrade),
 								() => spendsPreservedResource(zigguratUpgrade),
+								() => zigguratUpgrade,
 							),
 						] as [
 							ZigguratUpgrade | "unicornPasture",
@@ -289,6 +291,7 @@ export class ReligionSettingsUi extends SettingsPanel<
 							},
 							() => resolvePriceRatio(this.host, upgrade),
 							() => spendsPreservedResource(upgrade),
+							() => upgrade,
 						),
 					),
 				new Delimiter(this),
@@ -332,6 +335,7 @@ export class ReligionSettingsUi extends SettingsPanel<
 							},
 							() => resolvePriceRatio(this.host, upgrade),
 							() => spendsPreservedResource(upgrade),
+							() => upgrade,
 						);
 						// For those items that don't have a max button, ensure their trigger
 						// buttons are in alignment.
@@ -376,6 +380,7 @@ export class ReligionSettingsUi extends SettingsPanel<
 							},
 							() => resolvePriceRatio(this.host, upgrade),
 							() => spendsPreservedResource(upgrade),
+							() => upgrade,
 						),
 					),
 			]),

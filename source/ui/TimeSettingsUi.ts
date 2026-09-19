@@ -299,6 +299,7 @@ export class TimeSettingsUi extends SettingsPanel<
 							},
 							() => resolvePriceRatio(this.host, building, "Time"),
 							() => spendsPreservedResource(building),
+							() => building,
 						),
 					),
 
@@ -331,6 +332,7 @@ export class TimeSettingsUi extends SettingsPanel<
 							},
 							() => resolvePriceRatio(this.host, building, "Time"),
 							() => spendsPreservedResource(building),
+							() => building,
 						),
 					),
 			]),

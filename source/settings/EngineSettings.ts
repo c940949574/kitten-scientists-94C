@@ -56,10 +56,10 @@ export class EngineSettings extends Setting {
 		this.resources = resources;
 		this.states = states;
 		this.locale = new SettingOptions<SupportedLocale>(language, [
-			{ label: "Deutsch", value: "de-DE" },
 			{ label: "English", value: "en-US" },
-			{ label: "עִברִית", value: "he-IL" },
-			{ label: "中文", value: "zh-CN" },
+			{ label: "Deutsch", value: "de-DE" },
+				{ label: "עִברִית", value: "he-IL" },
+				{ label: "中文", value: "zh-CN" },
 		]);
 		this.ksColumn = ksColumn;
 		this.highlighStock = highlightStock;

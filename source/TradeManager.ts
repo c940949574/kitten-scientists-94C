@@ -119,11 +119,14 @@ export class TradeManager implements Automation {
 		);
 
 		// Now let's do some trades.
-		// The current implementation aims for correctness. It is SLOW.
-		// If we can do thousands of trades, we will iterate through this code
-		// thousands of times.
-		// TODO: Optimize this for performance.
-
+		// The previous implementation distributed trades one by one in
+		// round-robin fashion, which made it O(totalTrades). With stockpiles in
+		// the hundreds of millions, that meant millions of map operations in a
+		// single frame and severe lag.
+		// The implementation below produces the identical allocation in bulk:
+		// it computes all rotations between two "race exhausted" events at once
+		// (including the rotation-position semantics after a removal), making it
+		// O(races²) regardless of how many trades are made.
 		const racesLeft = shuffleArray(
 			tradeCountsPossible
 				.entries()
@@ -131,26 +134,90 @@ export class TradeManager implements Automation {
 				.filter((_) => _ !== null)
 				.toArray(),
 		);
-		let tradesOrderedTotal = 0;
 		const tradeCountsOrdered = new Map<Race, number>(
 			racesLeft.map((_) => [_, 0]),
 		);
+		let tradesLeft = maxTrades;
 		let raceIndex = 0;
-		while (0 < racesLeft.length && tradesOrderedTotal < maxTrades) {
-			const race = racesLeft[raceIndex];
-			tradeCountsOrdered.set(race, mustExist(tradeCountsOrdered.get(race)) + 1);
-			++tradesOrderedTotal;
-			tradeCountsPossible.set(
-				race,
-				mustExist(tradeCountsPossible.get(race)) - 1,
-			);
-			if (tradeCountsPossible.get(race) === 0) {
-				racesLeft.splice(raceIndex, 1);
+
+		while (0 < racesLeft.length && 0 < tradesLeft) {
+			const roundSize = racesLeft.length;
+
+			// How many steps until the next race exhausts its quota and gets
+			// removed, measured from the current rotation position.
+			let nextRemoval = Number.POSITIVE_INFINITY;
+			for (let i = 0; i < roundSize; i++) {
+				const quota = mustExist(tradeCountsPossible.get(racesLeft[i]));
+				const stepsToRace = (i - raceIndex + roundSize) % roundSize;
+				nextRemoval = Math.min(
+					nextRemoval,
+					stepsToRace + (quota - 1) * roundSize,
+				);
 			}
-			raceIndex = racesLeft.length <= raceIndex + 1 ? 0 : raceIndex + 1;
+
+			// The budget runs out before the next removal: whole rotations in
+			// bulk, plus the remainder along the rotation order, and stop.
+			if (tradesLeft <= nextRemoval) {
+				const fullPasses = Math.floor(tradesLeft / roundSize);
+				const remainder = tradesLeft % roundSize;
+				for (let i = 0; i < roundSize; i++) {
+					const race = racesLeft[i];
+					const stepsToRace = (i - raceIndex + roundSize) % roundSize;
+					const visits = fullPasses + (stepsToRace < remainder ? 1 : 0);
+					if (0 < visits) {
+						tradeCountsOrdered.set(
+							race,
+							mustExist(tradeCountsOrdered.get(race)) + visits,
+						);
+						tradeCountsPossible.set(
+							race,
+							mustExist(tradeCountsPossible.get(race)) - visits,
+						);
+					}
+				}
+				tradesLeft = 0;
+				break;
+			}
+
+			// All rotations before the removal step, in bulk.
+			for (let i = 0; i < roundSize; i++) {
+				const race = racesLeft[i];
+				const stepsToRace = (i - raceIndex + roundSize) % roundSize;
+				// Number of visits to this position within [0, nextRemoval).
+				const visits =
+					Math.floor((nextRemoval - 1 - stepsToRace) / roundSize) + 1;
+				if (0 < visits) {
+					tradeCountsOrdered.set(
+						race,
+						mustExist(tradeCountsOrdered.get(race)) + visits,
+					);
+					tradeCountsPossible.set(
+						race,
+						mustExist(tradeCountsPossible.get(race)) - visits,
+					);
+				}
+			}
+			tradesLeft -= nextRemoval;
+
+			// The removal step itself.
+			const removedIndex = (raceIndex + nextRemoval) % roundSize;
+			tradeCountsOrdered.set(
+				racesLeft[removedIndex],
+				mustExist(tradeCountsOrdered.get(racesLeft[removedIndex])) + 1,
+			);
+			tradeCountsPossible.set(racesLeft[removedIndex], 0);
+			tradesLeft -= 1;
+			racesLeft.splice(removedIndex, 1);
+
+			// Mirror the rotation-position advancement of the old loop.
+			raceIndex = removedIndex + 1 < roundSize - 1 ? removedIndex + 1 : 0;
 		}
 
 		// If we found no trades to do, bail out.
+		const tradesOrderedTotal = [...tradeCountsOrdered.values()].reduce(
+			(sum, count) => sum + count,
+			0,
+		);
 		if (tradesOrderedTotal === 0) {
 			return;
 		}
