@@ -23,6 +23,9 @@ export class TradeManager implements Automation {
 	readonly settings: TradeSettings;
 	private readonly _workshopManager: WorkshopManager;
 
+	/** Races whose quota math produced a broken value, reported once each. */
+	private readonly _brokenQuotaRaces = new Set<Race>();
+
 	constructor(
 		host: KittenScientists,
 		workshopManager: WorkshopManager,
@@ -52,6 +55,57 @@ export class TradeManager implements Automation {
 		if (this.settings.tradeBlackcoin.enabled) {
 			this.autoTradeBlackcoin();
 		}
+	}
+
+	/**
+	 * The number of trades the given race can afford, clamped to a finite,
+	 * non-negative integer.
+	 *
+	 * The raw calculation divides the spendable stock by the per-trade cost.
+	 * With a cost of zero that yields `Infinity`, and with a negative cost —
+	 * `tradeGoldDiscount` can exceed the base gold cost, the game clamps the
+	 * same subtraction at zero, this code does not — it yields a negative
+	 * count. Feeding either into the rotation below would corrupt its
+	 * arithmetic (`(index + step) % size` turns negative, which yields an
+	 * `undefined` race and threw), so:
+	 *
+	 * - `Infinity` (a free material) stays effectively unlimited, but finite.
+	 * - A negative count and `NaN` both mean "nothing we can reason about"
+	 *   and are treated as no trades. `NaN` is also reported once per race,
+	 *   so a broken save value can be identified instead of staying silent.
+	 *
+	 * @param race The race to determine the count for, or `null` for the
+	 * overall budget.
+	 * @returns A finite, non-negative number of trades.
+	 */
+	private _safeTradeCount(race: Race | null): number {
+		const count = this.getLowestTradeAmount(race);
+
+		if (Number.isFinite(count)) {
+			return Math.max(0, count);
+		}
+		if (count === Number.POSITIVE_INFINITY) {
+			return Number.MAX_SAFE_INTEGER;
+		}
+
+		if (race !== null && !this._brokenQuotaRaces.has(race)) {
+			this._brokenQuotaRaces.add(race);
+			const materials = this.getMaterials(race);
+			const available: Partial<Record<Resource, number>> = {};
+			for (const material of objectEntries(materials)) {
+				available[material[0]] = this._workshopManager.getValueAvailable(
+					material[0],
+				);
+			}
+			console.warn(
+				...cl(
+					`Unexpected trade quota for '${race}' (${count}); treating it as 0.`,
+					{ materials, available },
+				),
+			);
+		}
+
+		return 0;
 	}
 
 	autoTrade() {
@@ -112,10 +166,10 @@ export class TradeManager implements Automation {
 		}
 
 		// How many times we could trade total.
-		const maxTrades = this.getLowestTradeAmount(null);
+		const maxTrades = this._safeTradeCount(null);
 		// How many times we could trade with each race.
 		const tradeCountsPossible = new Map<Race, number>(
-			trades.map((_) => [_, this.getLowestTradeAmount(_)]),
+			trades.map((_) => [_, this._safeTradeCount(_)]),
 		);
 
 		// Now let's do some trades.
@@ -201,11 +255,18 @@ export class TradeManager implements Automation {
 
 			// The removal step itself.
 			const removedIndex = (raceIndex + nextRemoval) % roundSize;
+			const removedRace = racesLeft[removedIndex];
+			if (removedRace === undefined) {
+				// Defensive: an out-of-range index must never turn into a
+				// thrown nil error that ends the automation loop.
+				tradesLeft = 0;
+				break;
+			}
 			tradeCountsOrdered.set(
-				racesLeft[removedIndex],
-				mustExist(tradeCountsOrdered.get(racesLeft[removedIndex])) + 1,
+				removedRace,
+				mustExist(tradeCountsOrdered.get(removedRace)) + 1,
 			);
-			tradeCountsPossible.set(racesLeft[removedIndex], 0);
+			tradeCountsPossible.set(removedRace, 0);
 			tradesLeft -= 1;
 			racesLeft.splice(removedIndex, 1);
 

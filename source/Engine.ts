@@ -70,6 +70,9 @@ import { WorkshopManager } from "./WorkshopManager.js";
 
 const i18nData = { "de-DE": deDE, "en-US": enUS, "he-IL": heIL, "zh-CN": zhCN };
 
+/** How often a loop error may be reported in the message log, in ms. */
+const LoopErrorNoticeCooldown = 60_000;
+
 export type FrameContext = {
 	purchaseOrders: Array<{
 		builds: Partial<
@@ -179,6 +182,9 @@ export class Engine {
 	 */
 	private _isInStandBy = false;
 	private _timeoutMainLoop: number | undefined = undefined;
+
+	/** Last time a loop error was reported in the message log, in epoch ms. */
+	private _lastLoopErrorNotice = 0;
 
 	constructor(host: KittenScientists, gameLanguage: Locale) {
 		this.settings = new EngineSettings();
@@ -440,7 +446,30 @@ export class Engine {
 					);
 				})
 				.catch((error: unknown) => {
-					console.warn(...cl(unknownToError(error)));
+					const loopError = unknownToError(error);
+					console.warn(...cl(loopError));
+
+					// An error used to silently end the loop here: no further
+					// frame was scheduled, so the game kept running while every
+					// automation stopped dead until the player toggled the
+					// engine off and on again. Keep the loop alive instead.
+					if (this._timeoutMainLoop === undefined) {
+						return;
+					}
+
+					// Surface the error once in a while, so a recurring failure
+					// doesn't stay invisible — without spamming the log every
+					// frame.
+					const now = Date.now();
+					if (this._lastLoopErrorNotice + LoopErrorNoticeCooldown <= now) {
+						this._lastLoopErrorNotice = now;
+						this._host.engine.imessage("error.ks.loop", [loopError.message]);
+					}
+
+					this._timeoutMainLoop = UserScriptLoader.window.setTimeout(
+						loop,
+						Math.max(10, this._host.engine.settings.interval),
+					);
 				});
 		};
 		this._timeoutMainLoop = UserScriptLoader.window.setTimeout(

@@ -227,6 +227,7 @@
 	"status.embassy.disable": "Disabled building embassies for {0}",
 	"status.embassy.enable": "Enabled building embassies for {0}",
 	"status.ks.disable": "Disabling the Kitten Scientists!",
+	"error.ks.loop": "Automation hit an error this frame; the engine keeps running. ({0})",
 	"status.ks.enable": "Enabling the Kitten Scientists!",
 	"status.ks.init": "Kitten Scientists initialized",
 	"status.ks.standby": "All automations are standing by",

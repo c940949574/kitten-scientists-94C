@@ -227,6 +227,7 @@
 	"status.embassy.disable": "已禁用为 {0} 建造大使馆",
 	"status.embassy.enable": "已启用为 {0} 建造大使馆",
 	"status.ks.disable": "太敬业了，该歇了",
+	"error.ks.loop": "自动化本帧出错已跳过，引擎继续运行。（{0}）",
 	"status.ks.enable": "神说，要有猫猫珂学家!",
 	"status.ks.init": "小猫珂学家已初始化。",
 	"status.ks.standby": "所有自动化均已就绪",
