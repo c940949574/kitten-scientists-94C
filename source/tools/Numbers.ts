@@ -9,12 +9,18 @@
  * - `52` – a plain number
  * - `52.7` – a number with decimals
  * - `1e42` – scientific notation, including a negative or explicit exponent
- * - `1.5K`, `2M`, `3G`, `4T`, `5P`, `6E`, `7Z`, `8Y` – the postfixes the game
- *   uses for display
+ * - `1.5K`, `2M`, `3G`, `4T`, `5P`, `6E`, `7Z`, `8Y`, `9U`, `2S`, `1H` – the
+ *   postfixes the game uses for display
  * - `∞` – the game's symbol for "no limit"
  *
  * The mantissa and the postfix may be combined, so `1e3K` is accepted and means
  * the same as `1M`.
+ *
+ * The game composes postfixes: when a value is large enough to clear a postfix
+ * on the display, it is divided by that postfix and the process repeats on the
+ * remainder, appending letters as it goes. `WS` therefore means ×1e42 ×1e30 and
+ * `WWM` means ×1e42 ×1e42 ×1e6 — any sequence of the letters below is accepted,
+ * matching whatever the game displays.
  *
  * Supported by the two percentage-aware fields (see `parsePercentageInput`):
  *
@@ -51,25 +57,41 @@ export type ParseEntryResult = ParsedEntry | null;
  * Matches the syntax accepted by `parseAbsoluteEntry`.
  *
  * The mantissa and its exponent are captured separately, so that the exponent
- * of a postfix can be folded into an exponent the input already carries.
+ * of a postfix can be folded into an exponent the input already carries. The
+ * postfix is kept as a whole sequence of letters, because the game composes
+ * them (`WS`, `WWM`, …).
  */
-export const NUMBER_PATTERN = /^(\d+(?:\.\d+)?)(?:e([+-]?\d+))?([KMGTPEZY]?)$/i;
+export const NUMBER_PATTERN = /^(\d+(?:\.\d+)?)(?:e([+-]?\d+))?([A-Za-z]*)$/;
 
-/** The multiplier for every postfix the game uses for display. */
-const POSTFIX_FACTORS: Record<string, number> = {
-	"": 1,
-	K: 1000 ** 1,
-	M: 1000 ** 2,
-	G: 1000 ** 3,
-	T: 1000 ** 4,
-	P: 1000 ** 5,
-	E: 1000 ** 6,
-	Z: 1000 ** 7,
-	Y: 1000 ** 8,
+/**
+ * The decimal exponent of every postfix letter the game displays.
+ *
+ * Mirrors the `postfixes` table of the game (`core.js`/`game.js`), which is
+ * ordered largest first and divides the value by its divisor each time a limit
+ * is cleared: `Q` 1e210, `W` 1e42, `L` 1e39, `F` 1e36, `H` 1e33, `S` 1e30,
+ * `U` 1e27, then the classic `Y` 1e24 down to `K` 1e3.
+ */
+const POSTFIX_EXPONENTS: Record<string, number> = {
+	K: 3,
+	M: 6,
+	G: 9,
+	T: 12,
+	P: 15,
+	E: 18,
+	Z: 21,
+	Y: 24,
+	U: 27,
+	S: 30,
+	H: 33,
+	F: 36,
+	L: 39,
+	W: 42,
+	Q: 210,
 };
 
 /**
- * Combine a mantissa, its exponent and a postfix multiplier into a number.
+ * Combine a mantissa, its exponent and the exponent of a postfix sequence into
+ * a number.
  *
  * The exponents are added up before anything is parsed, so that the result is
  * assembled as a single numeric literal: `Number("1e308") * 1000` would
@@ -83,18 +105,16 @@ const POSTFIX_FACTORS: Record<string, number> = {
  * @param mantissa - The value without its exponent or postfix, e.g. `1.5`.
  * @param exponent - The exponent the mantissa already carries, e.g. `10` for
  * `1.5e10`. May be absent.
- * @param factor - The multiplier of the postfix, e.g. `1000` for `K`.
+ * @param postfixExponent - The combined exponent of the postfix sequence, e.g.
+ * `72` for `WS` (1e42 × 1e30).
  * @returns The parsed value, or `null` if it isn't representable in a number.
  */
-function applyFactor(
+function applyExponent(
 	mantissa: string,
 	exponent: string | undefined,
-	factor: number,
+	postfixExponent: number,
 ): number | null {
-	// The postfixes are exact powers of ten, but they grow past 2^53, where the
-	// decimal logarithm can land a hair off the integer it should be.
-	const totalExponent =
-		Number.parseInt(exponent ?? "0", 10) + Math.round(Math.log10(factor));
+	const totalExponent = Number.parseInt(exponent ?? "0", 10) + postfixExponent;
 	const literal =
 		totalExponent === 0 ? mantissa : `${mantissa}e${totalExponent}`;
 
@@ -122,11 +142,18 @@ export function parseAbsoluteEntry(value: string): ParsedAbsolute | null {
 		return null;
 	}
 
-	const number = applyFactor(
-		match[1],
-		match[2],
-		POSTFIX_FACTORS[match[3].toUpperCase()],
-	);
+	// The postfix is a sequence of the game's display letters; anything else
+	// is not a value we understand.
+	let postfixExponent = 0;
+	for (const letter of match[3].toUpperCase()) {
+		const exponent = POSTFIX_EXPONENTS[letter];
+		if (exponent === undefined) {
+			return null;
+		}
+		postfixExponent += exponent;
+	}
+
+	const number = applyExponent(match[1], match[2], postfixExponent);
 	if (number === null || number < 0) {
 		return null;
 	}

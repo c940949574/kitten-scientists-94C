@@ -46,6 +46,7 @@ import { TimeControlManager } from "./TimeControlManager.js";
 import { TimeManager } from "./TimeManager.js";
 import { TradeManager } from "./TradeManager.js";
 import { objectEntries } from "./tools/Entries.js";
+import { clampTimeoutDelay } from "./tools/Format.js";
 import { cl } from "./tools/Log.js";
 import {
 	type AllBuildings,
@@ -72,6 +73,9 @@ const i18nData = { "de-DE": deDE, "en-US": enUS, "he-IL": heIL, "zh-CN": zhCN };
 
 /** How often a loop error may be reported in the message log, in ms. */
 const LoopErrorNoticeCooldown = 60_000;
+
+/** The loop interval to fall back to when the configured one isn't usable. */
+const DefaultLoopInterval = 2000;
 
 export type FrameContext = {
 	purchaseOrders: Array<{
@@ -442,7 +446,10 @@ export class Engine {
 
 					this._timeoutMainLoop = UserScriptLoader.window.setTimeout(
 						loop,
-						Math.max(10, this._host.engine.settings.interval - timeTaken),
+						clampTimeoutDelay(
+							this._host.engine.settings.interval - timeTaken,
+							DefaultLoopInterval,
+						),
 					);
 				})
 				.catch((error: unknown) => {
@@ -468,13 +475,19 @@ export class Engine {
 
 					this._timeoutMainLoop = UserScriptLoader.window.setTimeout(
 						loop,
-						Math.max(10, this._host.engine.settings.interval),
+						clampTimeoutDelay(
+							this._host.engine.settings.interval,
+							DefaultLoopInterval,
+						),
 					);
 				});
 		};
 		this._timeoutMainLoop = UserScriptLoader.window.setTimeout(
 			loop,
-			this._host.engine.settings.interval,
+			clampTimeoutDelay(
+				this._host.engine.settings.interval,
+				DefaultLoopInterval,
+			),
 		);
 
 		if (msg) {
