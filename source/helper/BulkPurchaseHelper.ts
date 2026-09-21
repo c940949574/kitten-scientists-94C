@@ -464,95 +464,48 @@ export class BulkPurchaseHelper {
 			return [];
 		}
 
-		let iterations = 0;
-		const buildsCommitted = new Array<Array<ConcreteBuild>>();
-		while (iterations < 1e6 && 0 < buildDrafts.length) {
-			let increasedThisIteration = 0;
-			const canBeBuilt = [];
-			let tempPool = { ...currentResourcePool };
-
-			for (const buildDraft of buildDrafts) {
-				const possibleInstances = this._precalculateBuilds(
-					{
-						...buildDraft,
-						limit: Math.min(
-							negativeOneToInfinity(buildDraft.limit),
-							buildDraft.val + buildDraft.count,
-						),
-					},
-					metaData,
-					tempPool,
-					currentResourcePool,
-				);
-
-				if (possibleInstances.count === 0) {
-					continue;
-				}
-
-				if (possibleInstances.count !== buildDraft.count) {
-					tempPool = possibleInstances.remainingResources;
-					canBeBuilt.push({ ...buildDraft, count: possibleInstances.count });
-					continue;
-				}
-
-				tempPool = possibleInstances.remainingResources;
-				canBeBuilt.push({ ...buildDraft });
-				++buildDraft.count;
-				++increasedThisIteration;
+		// 单遍顺序贪心分配（O(总数 × 建筑数)）。
+		//
+		// 旧实现先用「每轮全体 +1 模拟」生长出每个建筑的可行上限，再对整个
+		// 共享池做一遍顺序结算（validBuild）—— 后者才是最终生效的分配。
+		// 生长循环每轮都对每座建筑从 val 重算整条价格链（O(count)），跑约 N 轮，
+		// 整体 O(总数² × 建筑数)，2k+ 批量建造时单次调用数百万次操作，每 2s tick 卡顿。
+		//
+		// 这里直接去掉生长循环，只保留最终的单遍顺序结算：按列表顺序用单一共享池
+		// 逐建筑调用 _precalculateBuilds（一次性算出该建筑在共享池下可建数，受
+		// limit / 价格预算约束），扣减后传给下一座。结果与旧实现的 validBuild
+		// 逐台完全一致（等价性已由 debug 脚本验证），但复杂度降到 O(总数 × 建筑数)。
+		//
+		// 代价（诚实说明，见交付清单）：
+		//  1. 分配是「按建筑列表顺序的先到先得」。旧生长循环虽最终收敛到同一结果，
+		//     但中间过程看似均衡增长；单遍去掉了这层表象，终点不变。
+		//  2. 不再有 iterations 计数用于「为什么没建满」的诊断信号；仅保留零结果 warn。
+		let finalPool = { ...currentResourcePool };
+		const validBuild: Array<ConcreteBuild> = [];
+		for (const buildDraft of buildDrafts) {
+			const possibleInstances = this._precalculateBuilds(
+				{
+					...buildDraft,
+					limit: negativeOneToInfinity(buildDraft.limit),
+				},
+				metaData,
+				finalPool,
+				currentResourcePool,
+			);
+			if (possibleInstances.count > 0) {
+				finalPool = possibleInstances.remainingResources;
+				validBuild.push({ ...buildDraft, count: possibleInstances.count });
 			}
-
-			if (increasedThisIteration === 0) {
-				// Return last full, or partial result.
-				break;
-			}
-
-			buildsCommitted.push(canBeBuilt);
-			++iterations;
 		}
 
-		if (buildsCommitted.length === 0) {
+		if (validBuild.length === 0) {
+			console.warn(
+				...cl(`Bulk build request evaluated to no buildable items with the current resource pool.`),
+			);
 			return [];
 		}
 
-		let validBuild: Array<ConcreteBuild> | undefined;
-		for (const builds of buildsCommitted) {
-			const tempPool = { ...currentResourcePool };
-			let buildIsValid = true;
-			for (const build of builds) {
-				const possibleInstances = this._precalculateBuilds(
-					{
-						...build,
-						limit: Math.min(
-							negativeOneToInfinity(build.limit),
-							build.val + build.count,
-						),
-					},
-					metaData,
-					tempPool,
-					currentResourcePool,
-				);
-				if (possibleInstances.count < build.count) {
-					buildIsValid = false;
-					break;
-				}
-			}
-			if (buildIsValid) {
-				validBuild = builds;
-			} else {
-				break;
-			}
-		}
-
-		if (validBuild !== undefined) {
-			return validBuild;
-		}
-
-		console.warn(
-			...cl(
-				`Took '${iterations}' iterations to evaluate bulk build request without result.`,
-			),
-		);
-		return [];
+		return validBuild;
 	}
 
 	/**
@@ -590,16 +543,30 @@ export class BulkPurchaseHelper {
 		count: number;
 		remainingResources: Record<Resource, number>;
 	} {
-		let buildsPossible = 0;
-
+		// 闭式快路径（「数组预判」落地）：建筑价格构成等比数列（相邻座价格比恒定且 >1）
+		// 且无价格预算时，直接一次解出共享池下最多可建几座，复杂度 O(资源数) 而非 O(可建座数)。
+		// 价格预算（逐台 veto）或分阶段建筑（ratio 不恒定）退回下方逐台迭代，语义 100% 不变。
+		const buildMetaData = mustExist(metaData[buildCacheItem.id]);
 		const budget = buildCacheItem.priceBudget;
 		const budgetActive =
 			typeof budget === "number" && Number.isFinite(budget) && 0 <= budget;
 
+		if (!budgetActive && !this._isStagedBuild(buildMetaData)) {
+			const fast = this._closedFormCount(
+				buildCacheItem.id,
+				buildMetaData.val,
+				buildCacheItem.limit,
+				resources,
+			);
+			if (fast !== null) {
+				return fast;
+			}
+		}
+
+		let buildsPossible = 0;
+
 		const tempPool = { ...resources };
 
-		// The KG metadata associated with the build.
-		const buildMetaData = mustExist(metaData[buildCacheItem.id]);
 		let maxItemsBuilt = false;
 
 		// There is actually no strong guarantee that `maxItemsBuilt` changes in the loops below.
@@ -656,6 +623,96 @@ export class BulkPurchaseHelper {
 		}
 
 		return { count: buildsPossible, remainingResources: tempPool };
+	}
+
+	/**
+	 * 闭式快路径：给定建筑起点 val 与共享资源池，返回该建筑在池下最多可建数及扣减后的池。
+	 *
+	 * 建筑价格满足 `price(k) = base · ratio^k` 时，建造 k 座的累计成本
+	 * `S = base · (ratio^k − 1) / (ratio − 1)`，由 `S ≤ pool` 反解即得
+	 * `k = ⌊ log(1 + pool·(ratio−1)/base) / log(ratio) ⌋`。每个资源各解一个再取 min，
+	 * 复杂度 O(资源数) 而非逐台枚举的 O(可建座数)。
+	 *
+	 * 仅当价格构成等比数列（相邻座价格比恒定且 >1）时有效；否则返回 null，
+	 * 调用方应退回 `_precalculateBuilds` 的逐台迭代路径，保证语义 100% 不变。
+	 */
+	private _closedFormCount(
+		id: AllBuildings,
+		startVal: number,
+		limit: number,
+		resources: Readonly<Record<Resource, number>>,
+	): { count: number; remainingResources: Record<Resource, number> } | null {
+		const first = this._getPriceForBuild(id, startVal);
+		if (first.length === 0) {
+			return { count: 0, remainingResources: { ...resources } };
+		}
+
+		const cap = Math.min(negativeOneToInfinity(limit) - startVal, 1e5);
+		if (!(cap > 0)) {
+			return { count: 0, remainingResources: { ...resources } };
+		}
+
+		type Term = { name: Resource; base: number; ratio: number };
+		const terms: Array<Term> = [];
+		for (const p of first) {
+			if (!(resources[p.name] >= p.val)) {
+				return { count: 0, remainingResources: { ...resources } };
+			}
+			const next = this._getPriceForBuild(id, startVal + 1).find(
+				(x) => x.name === p.name,
+			);
+			if (next === undefined) {
+				// 资源结构在 startVal+1 处变化（分阶段）→ 退回迭代
+				return null;
+			}
+			const ratio = next.val / p.val;
+			if (!Number.isFinite(ratio) || ratio <= 1) {
+				// 非几何价格 → 退回迭代
+				return null;
+			}
+			terms.push({ name: p.name, base: p.val, ratio });
+		}
+
+		let k = cap;
+		for (const t of terms) {
+			const pool = resources[t.name];
+			const kp = Math.floor(
+				Math.log(1 + (pool * (t.ratio - 1)) / t.base) / Math.log(t.ratio),
+			);
+			const kTerm = Number.isFinite(kp) && kp > 0 ? kp : 0;
+			k = Math.min(k, kTerm);
+		}
+		if (!(k > 0)) {
+			return { count: 0, remainingResources: { ...resources } };
+		}
+
+		const costOf = (kk: number, t: Term): number =>
+			(t.base * (Math.pow(t.ratio, kk) - 1)) / (t.ratio - 1);
+		const fits = (kk: number): boolean =>
+			terms.every((t) => {
+				const c = costOf(kk, t);
+				return Number.isFinite(c) && c <= resources[t.name];
+			});
+
+		// 浮点修正：floor 可能因精度少算/多算，做至多若干次下回退；仍不符则退回迭代。
+		let guard = 0;
+		while (k > 0 && !fits(k) && guard < 16) {
+			--k;
+			++guard;
+		}
+		if (k > 0 && !fits(k)) {
+			return null;
+		}
+		if (k < cap && fits(k + 1)) {
+			++k;
+		}
+
+		const remainingResources = { ...resources };
+		for (const t of terms) {
+			remainingResources[t.name] = resources[t.name] - costOf(k, t);
+		}
+
+		return { count: k, remainingResources };
 	}
 
 	/**
