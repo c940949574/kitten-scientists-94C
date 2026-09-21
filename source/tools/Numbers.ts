@@ -60,8 +60,13 @@ export type ParseEntryResult = ParsedEntry | null;
  * of a postfix can be folded into an exponent the input already carries. The
  * postfix is kept as a whole sequence of letters, because the game composes
  * them (`WS`, `WWM`, …).
+ *
+ * The exponent marker is accepted in either case (`1e6` and `1E6`), because
+ * players type scientific notation the way their keyboard produces it. A bare
+ * `E` without digits is still the exa postfix (`1E` is 1e18), as the exponent
+ * marker requires at least one digit.
  */
-export const NUMBER_PATTERN = /^(\d+(?:\.\d+)?)(?:e([+-]?\d+))?([A-Za-z]*)$/;
+export const NUMBER_PATTERN = /^(\d+(?:\.\d+)?)(?:[eE]([+-]?\d+))?([A-Za-z]*)$/;
 
 /**
  * The decimal exponent of every postfix letter the game displays.

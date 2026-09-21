@@ -54,26 +54,51 @@ export class ResourcesSettingsUi extends SettingsPanel<ResourcesSettings> {
 			"zebras",
 		];
 
+		// The game splits its resources into two tables: the "resource" table at
+		// the top (`visible`) and the "craft" table at the bottom (`craftable`),
+		// each in the game's own definition order. Mirror that layout instead of
+		// sorting by name, so the panel lines up with what the player sees in the
+		// game. A resource that belongs to both tables (wood, blueprint, …) is
+		// listed once only, in the top table.
+		const availableResources = this.host.game.resPool.resources.filter(
+			(item) =>
+				!ignoredResources.includes(item.name) &&
+				!isNil(this.setting.resources[item.name]),
+		);
+
+		const toResourceItems = (
+			resources: typeof availableResources,
+		): Array<SettingListItem> =>
+			resources.map((resource) =>
+				this._makeResourceSetting(
+					this,
+					this.setting.resources[resource.name],
+					locale,
+					ucfirst(resource.title),
+				),
+			);
+
+		const visibleResources = availableResources.filter(
+			(resource) => resource.visible === true,
+		);
+		const craftableResources = availableResources.filter(
+			(resource) => resource.craftable === true && resource.visible !== true,
+		);
+
 		this.addChildContent(
-			new SettingsList(this).addChildren(
-				this.host.game.resPool.resources
-					.filter(
-						(item) =>
-							!ignoredResources.includes(item.name) &&
-							!isNil(this.setting.resources[item.name]),
-					)
-					.sort((a, b) => a.title.localeCompare(b.title, locale.selected))
-					.map(
-						(resource) =>
-							[
-								this.setting.resources[resource.name],
-								ucfirst(resource.title),
-							] as const,
-					)
-					.map(([setting, title]) =>
-						this._makeResourceSetting(this, setting, locale, title),
-					),
-			),
+			new SettingsList(this).addChildren([
+				...toResourceItems(visibleResources),
+				...(0 < craftableResources.length
+					? [
+							new LabelListItem(
+								this,
+								parent.host.engine.i18n("ui.resources.craft"),
+								{ delimiter: true },
+							),
+							...toResourceItems(craftableResources),
+						]
+					: []),
+			]),
 		);
 	}
 

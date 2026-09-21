@@ -455,7 +455,6 @@ export class TimeControlManager {
 			this.settings.timeSkip.activeHeatTransfer.enabled
 		) {
 			const heatPerTick = this._host.game.getEffect("heatPerTick");
-			const ticksPerSecond = this._host.game.ticksPerSecond;
 			if (
 				this.settings.timeSkip.activeHeatTransfer.activeHeatTransferStatus
 					.enabled
@@ -490,6 +489,8 @@ export class TimeControlManager {
 				const fluxEnabled = temporalFlux.maxValue > ticksPerYear;
 				const flux = temporalFlux.value < ticksPerYear;
 				if (
+					this.settings.timeSkip.activeHeatTransfer
+						.getTemporalFluxDuringCooldown.enabled &&
 					!season &&
 					this._host.game.calendar.day < 10 &&
 					temporalFluxProduction > factor / heatPerTick &&
@@ -518,7 +519,10 @@ export class TimeControlManager {
 						this._host.game.calendar.yearsPerCycle -
 						this._host.game.calendar.cycleYear;
 				}
-			} else if (heatNow >= heatMax - heatPerTick * ticksPerSecond * 10) {
+			} else if (
+				heatNow >=
+				heatMax * this.settings.timeSkip.activeHeatTransfer.startRatio
+			) {
 				this.settings.timeSkip.activeHeatTransfer.activeHeatTransferStatus.enabled = true;
 				this._host.refreshEntireUserInterface();
 				this._host.engine.iactivity(
