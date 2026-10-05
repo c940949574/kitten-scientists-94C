@@ -234,7 +234,10 @@ export class VillageSettingsUi extends SettingsPanel<VillageSettings> {
 		}
 
 		for (const option of this.setting.electLeader.trait.options) {
-			option.label = this.host.engine.i18n(`$village.trait.${option.value}`);
+			option.label =
+				option.value === "auto"
+					? this.host.engine.i18n("option.elect.trait.auto")
+					: this.host.engine.i18n(`$village.trait.${option.value}`);
 		}
 
 		this._electLeader = new SettingListItem(

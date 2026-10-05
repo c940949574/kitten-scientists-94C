@@ -4,8 +4,8 @@ import type { KittenScientists } from "./KittenScientists.js";
 import { VillageSettings } from "./settings/VillageSettings.js";
 import { objectEntries } from "./tools/Entries.js";
 import { negativeOneToInfinity } from "./tools/Format.js";
-import type { Resource } from "./types/index.js";
-import type { UnsafeJob } from "./types/village.js";
+import type { Resource, ResourceCraftable, Trait } from "./types/index.js";
+import type { Kitten, UnsafeJob } from "./types/village.js";
 import type { WorkshopManager } from "./WorkshopManager.js";
 
 export class VillageManager implements Automation {
@@ -133,32 +133,111 @@ export class VillageManager implements Automation {
 
 		const kittens = this._host.game.village.sim.kittens;
 		const leader = this._host.game.village.leader;
-		const job = this.settings.electLeader.job.selected;
-		const trait = this.settings.electLeader.trait.selected;
+		const electLeader = this.settings.electLeader;
+		const jobSelection = electLeader.job.selected;
+		const traitSelection = electLeader.trait.selected;
 
-		const leaderCandidates = kittens.filter(
-			(kitten) =>
-				(kitten.job === job || job === "any") && kitten.trait.name === trait,
-		);
+		// Theocracy requires the leader to have a specific job. Without it,
+		// `makeLeader` would refuse every candidate and spam the game log.
+		const theocracy = this._host.game.science.getPolicy("theocracy");
+		const requiredJob = theocracy.researched
+			? mustExist(theocracy.requiredLeaderJob)
+			: null;
+		const jobMatches = (kitten: Kitten) => {
+			const targetJob = requiredJob ?? jobSelection;
+			return targetJob === "any" || kitten.job === targetJob;
+		};
 
-		if (leaderCandidates.length === 0) {
+		// In automatic mode, the desired trait is derived from the automations
+		// which are currently enabled. Kittens with that trait are always
+		// preferred over kittens with any other leader trait.
+		const desiredTrait =
+			traitSelection === "auto" ? this._getDesiredLeaderTrait() : null;
+		const isEligible = (kitten: Kitten) =>
+			desiredTrait === null
+				? jobMatches(kitten) && kitten.trait.name === traitSelection
+				: jobMatches(kitten) && kitten.trait.name !== "none";
+		const tierOf = (kitten: Kitten) =>
+			desiredTrait !== null && kitten.trait.name !== desiredTrait ? 1 : 0;
+
+		const candidates = kittens
+			.filter(isEligible)
+			.map((kitten) => ({ kitten, tier: tierOf(kitten) }))
+			.sort((a, b) => a.tier - b.tier || b.kitten.rank - a.kitten.rank);
+
+		if (candidates.length === 0) {
 			return;
 		}
 
-		leaderCandidates.sort((a, b) => b.rank - a.rank);
-		const bestLeader = leaderCandidates[0];
+		const bestCandidate = candidates[0];
 		if (!isNil(leader)) {
+			// A leader who no longer matches the selection is always replaced.
+			const leaderTier = isEligible(leader) ? tierOf(leader) : 2;
 			if (
-				leader.trait.name === trait &&
-				(leader.job === job || job === "any") &&
-				bestLeader.rank <= leader.rank
+				leaderTier < bestCandidate.tier ||
+				(leaderTier === bestCandidate.tier &&
+					bestCandidate.kitten.rank <= leader.rank)
 			) {
 				return;
 			}
 		}
 
-		this._host.game.village.makeLeader(bestLeader);
+		this._host.game.village.makeLeader(bestCandidate.kitten);
 		this._host.engine.iactivity("leader.elect", "act.leader.elect");
+	}
+
+	/**
+	 * Determines the most suitable leader trait from the automations which are
+	 * currently enabled:
+	 * - Religion automation → `wise` (discounts on faith and gold prices)
+	 * - Hunting automation → `manager` (hunting bonus)
+	 * - Trading automation → `merchant` (trade bonus)
+	 * - Crafting automation → `chemist`/`metallurgist`, depending on whether
+	 *   chemical or metallic crafts are dominant, else `engineer` (general
+	 *   crafting bonus).
+	 */
+	private _getDesiredLeaderTrait(): Trait {
+		if (this._host.engine.religionManager.settings.enabled) {
+			return "wise";
+		}
+		if (this.settings.hunt.enabled) {
+			return "manager";
+		}
+		if (this._host.engine.tradeManager.settings.enabled) {
+			return "merchant";
+		}
+
+		const chemicalFocus = this._craftFocus([
+			"concrate",
+			"eludium",
+			"kerosene",
+			"thorium",
+		]);
+		const metallicFocus = this._craftFocus(["plate", "steel", "gear", "alloy"]);
+		if (metallicFocus < chemicalFocus) {
+			return "chemist";
+		}
+		if (chemicalFocus < metallicFocus) {
+			return "metallurgist";
+		}
+		return "engineer";
+	}
+
+	/**
+	 * Sums the crafting activity for the given crafts. Enabled crafts count as
+	 * 1, and crafts which are crafted without a limit count as 2, since they
+	 * are a stronger signal of the player's current focus.
+	 */
+	private _craftFocus(crafts: ReadonlyArray<ResourceCraftable>): number {
+		let focus = 0;
+		for (const craft of crafts) {
+			const setting = this._workshopManager.settings.resources[craft];
+			if (!setting.enabled) {
+				continue;
+			}
+			focus += setting.limited && 0 < setting.max ? 1 : 2;
+		}
+		return focus;
 	}
 
 	autoPromoteKittens(): void {

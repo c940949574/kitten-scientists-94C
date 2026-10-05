@@ -111,6 +111,7 @@
 	"option.elect.job": "Job",
 	"option.elect.job.any": "Any",
 	"option.elect.trait": "Trait",
+	"option.elect.trait.auto": "Auto (best suited)",
 	"option.embassies": "Build Embassies",
 	"option.faith.adore": "Adore the Galaxy",
 	"option.faith.autoPraise": "Praise the Sun",
