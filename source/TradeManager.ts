@@ -21,6 +21,8 @@ import type { WorkshopManager } from "./WorkshopManager.js";
 export class TradeManager implements Automation {
 	private readonly _host: KittenScientists;
 	readonly settings: TradeSettings;
+	/** Timestamp of the last executed trade, used by automatic leader election. */
+	lastTradeAt = 0;
 	private readonly _workshopManager: WorkshopManager;
 
 	/** Races whose quota math produced a broken value, reported once each. */
@@ -623,6 +625,8 @@ export class TradeManager implements Automation {
 		name: Race,
 		amount: number,
 	): { cost: Map<Resource, number>; received: Map<Resource, number> } {
+		// Run the trade with the matching leader bonus (automatic mode only).
+		this._host.engine.villageManager.swapLeaderFor("merchant");
 		const race = this.getRace(name);
 
 		const purchaseResources = [
@@ -708,6 +712,7 @@ export class TradeManager implements Automation {
 			);
 		}
 
+		this.lastTradeAt = Date.now();
 		this._host.engine.storeForSummary("trade", amount, race.title);
 		this._host.engine.iactivity("trade", "act.trade", [
 			this._host.renderAbsolute(amount),

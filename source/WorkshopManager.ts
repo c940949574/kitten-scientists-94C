@@ -29,8 +29,22 @@ import { UpgradeManager } from "./UpgradeManager.js";
 const CraftAmountSafetyThreshold = 1e12;
 const CraftAmountSafetyFactor = 1 - 1e-9;
 
+/** Crafts that benefit from the `chemist` leader trait. */
+export const ChemicalCrafts = [
+	"concrate",
+	"eludium",
+	"kerosene",
+	"thorium",
+] as const;
+
+/** Crafts that benefit from the `metallurgist` leader trait. */
+export const MetallicCrafts = ["plate", "steel", "gear", "alloy"] as const;
+
 export class WorkshopManager extends UpgradeManager implements Automation {
 	readonly settings: WorkshopSettings;
+	/** Timestamp and category of the last executed craft, used by automatic leader election. */
+	lastCraftAt = 0;
+	lastCraftCategory: "chemical" | "metallic" | "other" | null = null;
 
 	static readonly DEFAULT_CONSUME_RATE = 1;
 
@@ -364,6 +378,15 @@ export class WorkshopManager extends UpgradeManager implements Automation {
 			// craft …". A relative margin far larger than that rounding error
 			// keeps the request affordable; amounts below the threshold are
 			// untouched, so nothing is lost at ordinary sizes.
+			// Run each craft with the matching leader bonus (automatic mode only).
+			const leaderTrait =
+				ChemicalCrafts.find((_) => _ === order.name) !== undefined
+					? ("chemist" as const)
+					: MetallicCrafts.find((_) => _ === order.name) !== undefined
+						? ("metallurgist" as const)
+						: ("engineer" as const);
+			this._host.engine.villageManager.swapLeaderFor(leaderTrait);
+
 			const amount =
 				CraftAmountSafetyThreshold < order.amount
 					? Math.floor(order.amount * CraftAmountSafetyFactor)
@@ -393,6 +416,14 @@ export class WorkshopManager extends UpgradeManager implements Automation {
 			const craftedAmount = Number.parseFloat(
 				(amount * (1 + ratio)).toFixed(2),
 			);
+
+			this.lastCraftAt = Date.now();
+			this.lastCraftCategory =
+				leaderTrait === "chemist"
+					? "chemical"
+					: leaderTrait === "metallurgist"
+						? "metallic"
+						: "other";
 
 			this._host.engine.storeForSummary("craft", craftedAmount, resourceName);
 			messages.push(

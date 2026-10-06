@@ -45,6 +45,8 @@ import type { WorkshopManager } from "./WorkshopManager.js";
 export class ReligionManager implements Automation {
 	private readonly _host: KittenScientists;
 	readonly settings: ReligionSettings;
+	/** Timestamp of the last faith-related action, used by automatic leader election. */
+	lastFaithActionAt = 0;
 	private readonly _bulkManager: BulkPurchaseHelper;
 	private readonly _bonfireManager: BonfireManager;
 	private readonly _workshopManager: WorkshopManager;
@@ -1010,6 +1012,9 @@ export class ReligionManager implements Automation {
 
 		// Determine how much worship we'll gain and log it.
 		const worshipIncrease = faith.value * (1 + apocryphaBonus);
+		// Run the praise with the matching leader bonus (automatic mode only).
+		this._host.engine.villageManager.swapLeaderFor("wise");
+		this.lastFaithActionAt = Date.now();
 		this._host.engine.storeForSummary("praiseTheSun", worshipIncrease);
 		this._host.engine.iactivity("praiseTheSun", "act.praiseTheSun", [
 			this._host.game.getDisplayValueExt(faith.value),

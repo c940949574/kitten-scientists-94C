@@ -6,12 +6,19 @@ import { objectEntries } from "./tools/Entries.js";
 import { negativeOneToInfinity } from "./tools/Format.js";
 import type { Resource, ResourceCraftable, Trait } from "./types/index.js";
 import type { Kitten, UnsafeJob } from "./types/village.js";
-import type { WorkshopManager } from "./WorkshopManager.js";
+import {
+	ChemicalCrafts,
+	MetallicCrafts,
+	type WorkshopManager,
+} from "./WorkshopManager.js";
 
 export class VillageManager implements Automation {
 	private readonly _host: KittenScientists;
 	readonly settings: VillageSettings;
 	private readonly _workshopManager: WorkshopManager;
+	/** Last hunt and last leader change, for automatic leader election. */
+	private _lastHuntAt = 0;
+	private _lastElectAt = 0;
 
 	constructor(
 		host: KittenScientists,
@@ -182,13 +189,72 @@ export class VillageManager implements Automation {
 			}
 		}
 
-		this._host.game.village.makeLeader(bestCandidate.kitten);
-		this._host.engine.iactivity("leader.elect", "act.leader.elect");
+		// When activities alternate quickly, avoid flip-flopping the leader:
+		// re-elect at most once per cooldown, but always fill an empty leader
+		// position immediately.
+		if (
+			isNil(leader) ||
+			Date.now() - this._lastElectAt >= VillageManager.ELECT_COOLDOWN
+		) {
+			this._host.game.village.makeLeader(bestCandidate.kitten);
+			this._lastElectAt = Date.now();
+			this._host.engine.iactivity("leader.elect", "act.leader.elect");
+		}
+	}
+
+	/** How long (in ms) an actual activity counts as "recent" for trait selection. */
+	private static readonly ACTIVITY_WINDOW = 60_000;
+	/** Minimum delay (in ms) between two automatic leader changes. */
+	private static readonly ELECT_COOLDOWN = 60_000;
+
+	/**
+	 * Puts a kitten with the given trait into the leader position, so that
+	 * the upcoming action runs with the matching leader bonus. This is
+	 * silent (no log messages), because it may run several times per tick.
+	 * Only acts while the trait selection is in automatic mode; a trait
+	 * elected manually by the player is never overridden here.
+	 */
+	swapLeaderFor(trait: Trait): void {
+		const electLeader = this.settings.electLeader;
+		if (!electLeader.enabled || electLeader.trait.selected !== "auto") {
+			return;
+		}
+		// We can't assign a leader in the Anarchy challenge.
+		if (this._host.game.challenges.isActive("anarchy")) {
+			return;
+		}
+
+		const leader = this._host.game.village.leader;
+		if (!isNil(leader) && leader.trait.name === trait) {
+			return;
+		}
+
+		// Theocracy requires the leader to have a specific job.
+		const theocracy = this._host.game.science.getPolicy("theocracy");
+		const requiredJob = theocracy.researched
+			? mustExist(theocracy.requiredLeaderJob)
+			: null;
+
+		const candidates = this._host.game.village.sim.kittens
+			.filter(
+				(kitten) =>
+					kitten.trait.name === trait &&
+					(requiredJob === null || kitten.job === requiredJob),
+			)
+			.sort((a, b) => b.rank - a.rank);
+		if (candidates.length === 0) {
+			return;
+		}
+
+		this._host.game.village.makeLeader(candidates[0]);
 	}
 
 	/**
-	 * Determines the most suitable leader trait from the automations which are
-	 * currently enabled:
+	 * Determines the most suitable leader trait. Actual activity within the
+	 * recent window always takes priority, so with multiple automations
+	 * enabled the leader follows whatever is currently happening. When
+	 * nothing happened recently, fall back to the enabled automations in
+	 * fixed order:
 	 * - Religion automation → `wise` (discounts on faith and gold prices)
 	 * - Hunting automation → `manager` (hunting bonus)
 	 * - Trading automation → `merchant` (trade bonus)
@@ -197,6 +263,34 @@ export class VillageManager implements Automation {
 	 *   crafting bonus).
 	 */
 	private _getDesiredLeaderTrait(): Trait {
+		const now = Date.now();
+		const recent: Array<{ trait: Trait; at: number }> = [
+			{
+				trait: "wise",
+				at: this._host.engine.religionManager.lastFaithActionAt,
+			},
+			{ trait: "manager", at: this._lastHuntAt },
+			{ trait: "merchant", at: this._host.engine.tradeManager.lastTradeAt },
+		];
+		const workshop = this._workshopManager;
+		if (0 < workshop.lastCraftAt && workshop.lastCraftCategory !== null) {
+			recent.push({
+				trait:
+					workshop.lastCraftCategory === "chemical"
+						? "chemist"
+						: workshop.lastCraftCategory === "metallic"
+							? "metallurgist"
+							: "engineer",
+				at: workshop.lastCraftAt,
+			});
+		}
+		const latest = recent
+			.filter((_) => 0 < _.at && now - _.at < VillageManager.ACTIVITY_WINDOW)
+			.sort((a, b) => b.at - a.at)[0];
+		if (latest !== undefined) {
+			return latest.trait;
+		}
+
 		if (this._host.engine.religionManager.settings.enabled) {
 			return "wise";
 		}
@@ -207,13 +301,8 @@ export class VillageManager implements Automation {
 			return "merchant";
 		}
 
-		const chemicalFocus = this._craftFocus([
-			"concrate",
-			"eludium",
-			"kerosene",
-			"thorium",
-		]);
-		const metallicFocus = this._craftFocus(["plate", "steel", "gear", "alloy"]);
+		const chemicalFocus = this._craftFocus(ChemicalCrafts);
+		const metallicFocus = this._craftFocus(MetallicCrafts);
 		if (metallicFocus < chemicalFocus) {
 			return "chemist";
 		}
@@ -336,6 +425,7 @@ export class VillageManager implements Automation {
 		if (huntCount < 1) {
 			return;
 		}
+		this.swapLeaderFor("manager");
 		this._host.engine.storeForSummary("hunt", huntCount);
 
 		const averageOutput = this._workshopManager.getAverageHunt();
@@ -362,6 +452,7 @@ export class VillageManager implements Automation {
 		// number of squads, leaving the configured reserve untouched.
 		this._host.game.resPool.addResEvent("manpower", -huntCount * manpowerCost);
 		this._host.game.village.gainHuntRes(huntCount);
+		this._lastHuntAt = Date.now();
 		this._host.engine.iactivity("hunt", "act.hunt", [
 			this._host.renderAbsolute(huntCount),
 		]);
