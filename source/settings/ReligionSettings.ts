@@ -34,8 +34,9 @@ export class ReligionSettingsItem extends SettingTriggerMax {
 		building: FaithItem | UnicornItem,
 		variant: UnicornItemVariant,
 		enabled = false,
+		max = 0,
 	) {
-		super(enabled);
+		super(enabled, -1, max);
 		this.#building = building;
 		this.#variant = variant;
 	}
@@ -130,6 +131,15 @@ export class ReligionSettings extends SettingTrigger {
 			items[item] = new ReligionSettingsItem(
 				item,
 				UnicornItemVariant.OrderOfTheSun,
+				false,
+				// `apocripha`, `transcendence` are one-shot and `solarRevolution`
+				// is capped by the game itself. The UI provides no max button for
+				// them, so a default of max=0 would silently block them forever.
+				item === "apocripha" || item === "transcendence"
+					? 1
+					: item === "solarRevolution"
+						? -1
+						: 0,
 			);
 		}
 		for (const item of TranscendenceUpgrades) {
@@ -198,6 +208,22 @@ export class ReligionSettings extends SettingTrigger {
 				building.priceBudget?.load(item?.priceBudget);
 			},
 		);
+
+		// The UI provides no max button for the one-shot / game-capped upgrades,
+		// so a saved state of `enabled && max === 0` (the old constructor default)
+		// is always an accident: the option is checked, renders red, and can
+		// never be bought. Normalize it to the intended default.
+		const noMaxDefaults: Partial<Record<FaithItem, number>> = {
+			apocripha: 1,
+			transcendence: 1,
+			solarRevolution: -1,
+		};
+		for (const [name, max] of Object.entries(noMaxDefaults)) {
+			const item = this.buildings[name as FaithItem];
+			if (item.enabled && item.max === 0) {
+				item.max = max;
+			}
+		}
 
 		this.bestUnicornBuilding.load(settings.bestUnicornBuilding);
 		this.sacrificeAlicorns.load(settings.sacrificeAlicorns);
