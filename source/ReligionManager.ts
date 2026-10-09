@@ -10,7 +10,7 @@ import type { KittenScientists } from "./KittenScientists.js";
 import { BonfireBuildingSetting } from "./settings/BonfireSettings.js";
 import {
 	ReligionSettings,
-	type ReligionSettingsItem,
+	ReligionSettingsItem,
 } from "./settings/ReligionSettings.js";
 import { negativeOneToInfinity } from "./tools/Format.js";
 import { cl } from "./tools/Log.js";
@@ -138,24 +138,34 @@ export class ReligionManager implements Automation {
 			this._host.refreshEntireUserInterface();
 		}
 
-		if (this.settings.bestUnicornBuildingCurrent === null) {
+		const current = this.settings.bestUnicornBuildingCurrent;
+		if (current === null) {
 			return;
 		}
 
 		const sectionTrigger = this.settings.trigger;
 
-		if (this.settings.bestUnicornBuildingCurrent === "unicornPasture") {
+		if (current === "unicornPasture") {
+			// Batch-build pastures too; the steep price ratio (×1.75) brakes
+			// the batch naturally.
+			const original = this.settings.buildings.unicornPasture;
 			const buildRequest = {
-				[this.settings.bestUnicornBuildingCurrent]:
-					this.settings.buildings[this.settings.bestUnicornBuildingCurrent],
+				unicornPasture: new ReligionSettingsItem(
+					"unicornPasture",
+					original.variant,
+					original.enabled,
+					// An unset max (0) preserves the old single-build behavior.
+					original.max === 0 ? 1 : original.max,
+				),
 			};
+			buildRequest.unicornPasture.trigger = original.trigger;
 			const meta = {
-				[this.settings.bestUnicornBuildingCurrent]:
-					this._host.game.bld.getBuildingExt("unicornPasture" as Building)
-						.meta as Required<UnsafeBuilding>,
+				unicornPasture: this._host.game.bld.getBuildingExt(
+					"unicornPasture" as Building,
+				).meta as Required<UnsafeBuilding>,
 			};
-			const builder = (_build: ConcreteBuild) => {
-				this._bonfireManager.build("unicornPasture", 0, 1);
+			const builder = (build: ConcreteBuild) => {
+				this._bonfireManager.build("unicornPasture", 0, build.count);
 			};
 			context.purchaseOrders.push({
 				builder,
@@ -169,81 +179,34 @@ export class ReligionManager implements Automation {
 			return;
 		}
 
-		const buildImpl = this._getBuild(
-			this.settings.bestUnicornBuildingCurrent,
-			UnicornItemVariant.Ziggurat,
-		);
-
-		let tearsNeeded = 0;
-		const priceTears = mustExist(buildImpl.model.prices).find(
-			(subject) => subject.name === "tears",
-		);
-		if (!isNil(priceTears)) {
-			tearsNeeded = priceTears.val;
+		const buildImpl = this._getBuild(current, UnicornItemVariant.Ziggurat);
+		if (!this._ensureTearsFor(mustExist(buildImpl.model.prices))) {
+			return;
 		}
 
-		const tearsAvailableForUse =
-			this._workshopManager.getValue("tears") -
-			this._workshopManager.getStock("tears");
-
-		if (tearsAvailableForUse < tearsNeeded) {
-			// How many times can we sacrifice unicorns to make tears?
-			const maxSacrifice = Math.floor(
-				(this._workshopManager.getValue("unicorns") -
-					this._workshopManager.getStock("unicorns")) /
-					2500,
-			);
-
-			// How many sacrifices would we need, so we'd end up with enough tears.
-			const needSacrifice = Math.ceil(
-				(tearsNeeded - tearsAvailableForUse) /
-					this._host.game.bld.getBuildingExt("ziggurat").meta.on,
-			);
-
-			// Sacrifice some unicorns to get the tears to buy the building.
-			const zigguratCount = this._host.game.bld.get("ziggurat").on;
-			if (needSacrifice < maxSacrifice && 0 < zigguratCount) {
-				const controller = new classes.ui.religion.TransformBtnController(
-					this._host.game,
-					{
-						applyAtGain: (priceCount: number) => {
-							this._host.game.stats.getStat("unicornsSacrificed").val +=
-								priceCount;
-						},
-						gainedResource: "tears",
-						gainMultiplier: () => {
-							return this._host.game.bld.get("ziggurat").on;
-						},
-						logfilterID: "unicornSacrifice",
-						logTextID: "religion.sacrificeBtn.sacrifice.msg",
-						overcapMsgID: "religion.sacrificeBtn.sacrifice.msg.overcap",
-					},
-				) as TransformBtnController;
-				const model = controller.fetchModel({
-					controller,
-					description: "",
-					name: "",
-					prices: [{ name: "unicorns", val: 2500 }],
-				});
-				controller._transform(model, needSacrifice);
-
-				// iactivity?
-				// TODO: ☝ Yeah, seems like a good idea.
-			} else {
-				// Not enough unicorns to sacrifice to make enough tears.
-				return;
-			}
-		}
-
-		// Let the BulkManager figure out if the build can be made.
+		// Let the BulkManager figure out how many can be built, instead of
+		// forcing a single one per tick. The prices on the button model already
+		// include modifiers like the unicornTears challenge reward (reduced
+		// ivory price ratio), so the batch size adapts automatically.
+		const original = this.settings.buildings[current];
 		const buildRequest = {
-			[this.settings.bestUnicornBuildingCurrent]:
-				this.settings.buildings[this.settings.bestUnicornBuildingCurrent],
+			[current]: new ReligionSettingsItem(
+				current,
+				original.variant,
+				original.enabled,
+				// An unset max (0) preserves the old single-build behavior;
+				// otherwise the batch runs up to the configured limit.
+				original.max === 0 ? 1 : original.max,
+			),
 		};
+		buildRequest[current].trigger = original.trigger;
+		buildRequest[current].priceBudget = original.priceBudget;
 		const builder = (build: ConcreteBuild) => {
-			// We force only building 1 of the best unicorn building, because
-			// afterwards the best unicorn building is likely going to change.
-			this.build(build.id as ReligionItem, UnicornItemVariant.Ziggurat, 1);
+			this.build(
+				build.id as ReligionItem,
+				UnicornItemVariant.Ziggurat,
+				build.count,
+			);
 		};
 		context.purchaseOrders.push({
 			builder,
@@ -251,6 +214,67 @@ export class ReligionManager implements Automation {
 			metaData: this.getBuildMetaData(buildRequest),
 			sectionTrigger,
 		});
+	}
+
+	/**
+	 * Make sure the tears portion of the given price is payable, sacrificing
+	 * unicorns if needed. Returns whether enough tears are available after.
+	 */
+	private _ensureTearsFor(
+		prices: ReadonlyArray<{ name: string; val: number }>,
+	): boolean {
+		let tearsNeeded = 0;
+		const priceTears = prices.find((subject) => subject.name === "tears");
+		if (!isNil(priceTears)) {
+			tearsNeeded = priceTears.val;
+		}
+
+		const tearsAvailableForUse =
+			this._workshopManager.getValue("tears") -
+			this._workshopManager.getStock("tears");
+		if (tearsAvailableForUse >= tearsNeeded) {
+			return true;
+		}
+
+		// With batch building in play, don't just top up for a single build:
+		// whenever tears run short, sacrifice everything above the reserve.
+		// Leftover tears are never wasted — they stay available for the
+		// following ticks or get refined into BLS by the refine automation.
+		const needSacrifice = Math.floor(
+			(this._workshopManager.getValue("unicorns") -
+				this._workshopManager.getStock("unicorns")) /
+				2500,
+		);
+
+		// Sacrifice the unicorns to get the tears to build with.
+		const zigguratCount = this._host.game.bld.get("ziggurat").on;
+		if (!(0 < needSacrifice && 0 < zigguratCount)) {
+			// Nothing to sacrifice, or no ziggurat to gain tears from.
+			return false;
+		}
+		const controller = new classes.ui.religion.TransformBtnController(
+			this._host.game,
+			{
+				applyAtGain: (priceCount: number) => {
+					this._host.game.stats.getStat("unicornsSacrificed").val += priceCount;
+				},
+				gainedResource: "tears",
+				gainMultiplier: () => {
+					return this._host.game.bld.get("ziggurat").on;
+				},
+				logfilterID: "unicornSacrifice",
+				logTextID: "religion.sacrificeBtn.sacrifice.msg",
+				overcapMsgID: "religion.sacrificeBtn.sacrifice.msg.overcap",
+			},
+		) as TransformBtnController;
+		const model = controller.fetchModel({
+			controller,
+			description: "",
+			name: "",
+			prices: [{ name: "unicorns", val: 2500 }],
+		});
+		controller._transform(model, needSacrifice);
+		return true;
 	}
 
 	private _buildNonUnicornBuildings(context: FrameContext) {
