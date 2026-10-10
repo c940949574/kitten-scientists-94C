@@ -431,6 +431,8 @@ export type GamePage = {
 	importFromDropbox: (callback: AnyFunction) => void;
 	saveImportDropboxFileRead: (callback: AnyFunction) => void;
 	saveImportDropboxText: (lzdata: string, callback: AnyFunction) => void;
+	/** 当前游戏本体的文本导入接口（旧版的 `saveImportDropboxText` 已被移除）。 */
+	saveImportText: (lzdata: string, callback: AnyFunction) => void;
 	_loadSaveJson: (lzdata: string, callback: AnyFunction) => void;
 	migrateSave: <TSave>(save: TSave) => TSave;
 	setUI: (ui: DesktopUI) => void;

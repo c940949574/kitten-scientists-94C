@@ -451,11 +451,29 @@ export class TradeManager implements Automation {
 		}
 
 		if (1 <= necrocorns.value) {
-			// If feeding the elders would increase their energy level towards the
-			// cap, do it.
-			if (leviathanInfo.energy < this._host.game.diplomacy.getMarkerCap()) {
-				this._host.engine.storeForSummary("feedElders", 1);
+			// Feed up to the configured number of times per frame; `max = -1`
+			// means "keep feeding until the energy cap". The game's own
+			// `feedElders` refuses to act at the cap or without a whole
+			// necrocorn, both conditions are re-checked every iteration.
+			const maxFeeds = negativeOneToInfinity(this.settings.feedLeviathans.max);
+			const energyCap = this._host.game.diplomacy.getMarkerCap();
+			let fed = 0;
+			while (
+				fed < maxFeeds &&
+				1 <= necrocorns.value &&
+				leviathanInfo.energy < energyCap
+			) {
+				const energyBefore = leviathanInfo.energy;
 				this._host.game.diplomacy.feedElders();
+				fed += 1;
+				// Defensive: if the game silently refused (no energy gain),
+				// bail out instead of spinning the rest of the budget.
+				if (leviathanInfo.energy <= energyBefore) {
+					break;
+				}
+			}
+			if (0 < fed) {
+				this._host.engine.storeForSummary("feedElders", fed);
 				this._host.engine.iactivity("feedElders", "act.feedElders");
 			}
 		} else {

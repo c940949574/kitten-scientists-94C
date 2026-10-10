@@ -130,7 +130,7 @@ export class KittenScientists {
 		}
 		if (this._serverLoadHandle !== undefined) {
 			UserScriptLoader.window.dojo.unsubscribe(this._serverLoadHandle);
-			this._gameBeforeSaveHandle = undefined;
+			this._serverLoadHandle = undefined;
 		}
 		const managerIndex = this.game.managers.indexOf(this._saveManager);
 		if (-1 < managerIndex) {
@@ -175,7 +175,7 @@ export class KittenScientists {
 
 		if (this._serverLoadHandle !== undefined) {
 			UserScriptLoader.window.dojo.unsubscribe(this._serverLoadHandle);
-			this._gameBeforeSaveHandle = undefined;
+			this._serverLoadHandle = undefined;
 		}
 		this._serverLoadHandle = UserScriptLoader.window.dojo.subscribe(
 			"server/load",

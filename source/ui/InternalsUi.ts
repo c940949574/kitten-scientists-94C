@@ -81,6 +81,8 @@ export class InternalsUi extends SettingsPanel<EngineSettings> {
 
 								settings.interval =
 									parent.host.parseAbsolute(value) ?? settings.interval;
+								// 标签只在界面刷新时重绘：改完立即安排一次刷新，否则要等下一个刷新周期才能看到新值。
+								parent.requestRefresh(true);
 							},
 							onRefresh() {
 								this.element.text(

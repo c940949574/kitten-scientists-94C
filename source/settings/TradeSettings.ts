@@ -7,6 +7,7 @@ import {
 	Setting,
 	SettingBuySellThreshold,
 	SettingLimitedTrigger,
+	SettingMax,
 	SettingTrigger,
 } from "./Settings.js";
 
@@ -53,7 +54,8 @@ export type TradeSettingsItems = Record<Race, TradeSettingsItem>;
 export class TradeSettings extends SettingTrigger {
 	races: TradeSettingsItems;
 
-	feedLeviathans: Setting;
+	/** 每周期喂养利维坦次数上限；`max = -1` 表示不限次（喂到能量上限为止）。 */
+	feedLeviathans: SettingMax;
 	buildEmbassies: EmbassySettings;
 	tradeBlackcoin: SettingBuySellThreshold;
 	unlockRaces: Setting;
@@ -62,7 +64,7 @@ export class TradeSettings extends SettingTrigger {
 		enabled = false,
 		trigger = -1,
 		buildEmbassies = new EmbassySettings(),
-		feedLeviathans = new Setting(),
+		feedLeviathans = new SettingMax(false, 1),
 		tradeBlackcoin = new SettingBuySellThreshold(false, 1090.0, 1095.0, 10000),
 		unlockRaces = new Setting(),
 	) {

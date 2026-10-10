@@ -688,7 +688,19 @@ export class StateManagementUi extends SettingsPanel<StateSettings> {
 			return;
 		}
 
-		await new SavegameLoader(this.host.game).loadRaw(game);
+		try {
+			await new SavegameLoader(this.host.game).loadRaw(game);
+			// 存档里的 KS 状态经 server/load 事件回到引擎；读取成功后全量刷新一次界面，
+			// 让面板立即反映存档中的设置（此前依赖零散的刷新钩子，常显得"没生效"）。
+			this.host.refreshEntireUserInterface();
+		} catch (error) {
+			// 读取失败此前只在控制台留一条未捕获的 Promise 拒绝，玩家看不到任何反馈。
+			console.error(...cl("Loading the stored game failed.", error));
+			this.host.engine.printOutput(
+				`KS 存档读取失败：${error instanceof Error ? error.message : String(error)}`,
+				"ks-default",
+			);
+		}
 	}
 
 	async loadState(parent: UiComponent, state: EngineState) {

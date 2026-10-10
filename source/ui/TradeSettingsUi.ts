@@ -19,6 +19,7 @@ import { HeaderListItem } from "./components/HeaderListItem.js";
 import { SeasonsList } from "./components/SeasonsList.js";
 import { SettingLimitedTriggerListItem } from "./components/SettingLimitedTriggerListItem.js";
 import { SettingListItem } from "./components/SettingListItem.js";
+import { SettingMaxListItem } from "./components/SettingMaxListItem.js";
 import { SettingsList } from "./components/SettingsList.js";
 import { SettingsPanel } from "./components/SettingsPanel.js";
 import { SettingTriggerListItem } from "./components/SettingTriggerListItem.js";
@@ -135,29 +136,57 @@ export class TradeSettingsUi extends SettingsPanel<
 				),
 			);
 		const listRaces = new SettingsList(this, {
-			hasDisableAll: false,
-			hasEnableAll: false,
+			hasDisableAll: true,
+			hasEnableAll: true,
 		}).addChildren(this._racePanels);
 
-		listRaces.addChild(
-			new SettingListItem(
-				this,
-				this.setting.feedLeviathans,
-				this.host.engine.i18n("option.autofeed"),
-				{
-					onCheck: () => {
-						this.host.engine.imessage("status.sub.enable", [
-							this.host.engine.i18n("option.autofeed"),
-						]);
-					},
-					onUnCheck: () => {
-						this.host.engine.imessage("status.sub.disable", [
-							this.host.engine.i18n("option.autofeed"),
-						]);
-					},
+		const feedLabel = this.host.engine.i18n("option.autofeed");
+		const feedElement = new SettingMaxListItem(
+			this,
+			this.setting.feedLeviathans,
+			feedLabel,
+			{
+				onCheck: () => {
+					this.host.engine.imessage("status.sub.enable", [feedLabel]);
 				},
-			),
+				onRefreshMax: () => {
+					feedElement.maxButton.updateLabel(
+						this.host.renderAbsolute(this.setting.feedLeviathans.max),
+					);
+					feedElement.maxButton.element[0].title =
+						this.setting.feedLeviathans.max < 0
+							? this.host.engine.i18n("ui.autofeed.titleInfinite")
+							: this.host.engine.i18n("ui.autofeed.title", [
+									this.host.renderAbsolute(this.setting.feedLeviathans.max),
+								]);
+				},
+				onSetMax: async () => {
+					const value = await Dialog.prompt(
+						this,
+						this.host.engine.i18n("ui.max.prompt.absolute"),
+						this.host.engine.i18n("ui.autofeed.prompt", [
+							this.host.renderAbsolute(this.setting.feedLeviathans.max),
+						]),
+						this.host.renderAbsolute(this.setting.feedLeviathans.max),
+						this.host.engine.i18n("ui.autofeed.promptExplainer"),
+					);
+					if (value === undefined) {
+						return;
+					}
+					if (value === "" || value.startsWith("-")) {
+						this.setting.feedLeviathans.max = -1;
+						return;
+					}
+					this.setting.feedLeviathans.max =
+						this.host.parseAbsolute(value) ?? this.setting.feedLeviathans.max;
+				},
+				onUnCheck: () => {
+					this.host.engine.imessage("status.sub.disable", [feedLabel]);
+				},
+			},
 		);
+
+		listRaces.addChild(feedElement);
 
 		listRaces.addChild(
 			new SettingsPanel<SettingBuySellThreshold, SettingTriggerListItem>(

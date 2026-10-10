@@ -22,7 +22,21 @@ export class SavegameLoader {
 				return;
 			}
 
-			this._game.saveImportDropboxText(data, (error) => {
+			// The game renamed its text import endpoint:
+			// current versions expose `saveImportText`, older builds had
+			// `saveImportDropboxText`. Calling a missing method rejected every
+			// load with "is not a function", so accept whichever one exists.
+			const game = this._game as GamePage & {
+				saveImportText?: GamePage["saveImportText"];
+				saveImportDropboxText?: GamePage["saveImportDropboxText"];
+			};
+			const importText = game.saveImportText?.bind(game) ?? game.saveImportDropboxText?.bind(game);
+			if (!importText) {
+				reject(new Error("The game exposes no text import function (saveImportText)."));
+				return;
+			}
+
+			importText(data, (error) => {
 				if (error) {
 					reject(error);
 					return;
