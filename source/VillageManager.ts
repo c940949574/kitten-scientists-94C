@@ -16,9 +16,8 @@ export class VillageManager implements Automation {
 	private readonly _host: KittenScientists;
 	readonly settings: VillageSettings;
 	private readonly _workshopManager: WorkshopManager;
-	/** Last hunt and last leader change, for automatic leader election. */
+	/** Last hunt timestamp, for automatic leader election. */
 	private _lastHuntAt = 0;
-	private _lastElectAt = 0;
 
 	constructor(
 		host: KittenScientists,
@@ -189,23 +188,14 @@ export class VillageManager implements Automation {
 			}
 		}
 
-		// When activities alternate quickly, avoid flip-flopping the leader:
-		// re-elect at most once per cooldown, but always fill an empty leader
-		// position immediately.
-		if (
-			isNil(leader) ||
-			Date.now() - this._lastElectAt >= VillageManager.ELECT_COOLDOWN
-		) {
-			this._host.game.village.makeLeader(bestCandidate.kitten);
-			this._lastElectAt = Date.now();
-			this._host.engine.iactivity("leader.elect", "act.leader.elect");
-		}
+		// 换领袖免费且无游戏冷却；特质不匹配就立即换（含空位补位）。
+		// 换人频率由特质切换决定（活动跟随/瀑布归位），不会每 tick 空转。
+		this._host.game.village.makeLeader(bestCandidate.kitten);
+		this._host.engine.iactivity("leader.elect", "act.leader.elect");
 	}
 
 	/** How long (in ms) an actual activity counts as "recent" for trait selection. */
 	private static readonly ACTIVITY_WINDOW = 60_000;
-	/** Minimum delay (in ms) between two automatic leader changes. */
-	private static readonly ELECT_COOLDOWN = 60_000;
 
 	/**
 	 * Puts a kitten with the given trait into the leader position, so that
@@ -291,23 +281,31 @@ export class VillageManager implements Automation {
 			return latest.trait;
 		}
 
-		if (this._host.engine.religionManager.settings.enabled) {
-			return "wise";
-		}
-		if (this.settings.hunt.enabled) {
-			return "manager";
+		// 静态瀑布（无近期活动时的默认归位）：
+		// 锻造组（工匠/化学/冶金，按启用锻造的权重）> 商人 > 管理者 > 哲学家。
+		// 挑战过滤：pacifism（和平主义）下打猎被禁，管理者加成毫无意义，直接跳过。
+		const chemicalFocus = this._craftFocus(ChemicalCrafts);
+		const metallicFocus = this._craftFocus(MetallicCrafts);
+		if (0 < chemicalFocus || 0 < metallicFocus) {
+			if (metallicFocus < chemicalFocus) {
+				return "chemist";
+			}
+			if (chemicalFocus < metallicFocus) {
+				return "metallurgist";
+			}
+			return "engineer";
 		}
 		if (this._host.engine.tradeManager.settings.enabled) {
 			return "merchant";
 		}
-
-		const chemicalFocus = this._craftFocus(ChemicalCrafts);
-		const metallicFocus = this._craftFocus(MetallicCrafts);
-		if (metallicFocus < chemicalFocus) {
-			return "chemist";
+		if (
+			this.settings.hunt.enabled &&
+			!this._host.game.challenges.isActive("pacifism")
+		) {
+			return "manager";
 		}
-		if (chemicalFocus < metallicFocus) {
-			return "metallurgist";
+		if (this._host.engine.religionManager.settings.enabled) {
+			return "wise";
 		}
 		return "engineer";
 	}
