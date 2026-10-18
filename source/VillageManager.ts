@@ -63,72 +63,111 @@ export class VillageManager implements Automation {
 			return;
 		}
 
-		for (
-			let assignedKitten = 0;
-			assignedKitten < freeKittens;
-			++assignedKitten
-		) {
-			// Find all jobs where we haven't assigned the maximum desired kittens yet.
-			const jobsNotCapped = new Array<{
-				job: UnsafeJob;
-				count: number;
-				toCap: number;
-			}>();
-			for (const job of this._host.game.village.jobs) {
-				// Skip disabled jobs and those that haven't been unlocked;
-				const enabled = this.settings.jobs[job.name].enabled;
-				const unlocked = job.unlocked;
-				if (!enabled || !unlocked) {
-					continue;
-				}
+		let remaining = freeKittens;
+		let assigned = 0;
+		let forcedFarmer = false;
 
-				const maxKittensInJob = this._host.game.village.getJobLimit(job.name);
-				const maxKittensToAssign = negativeOneToInfinity(
-					this.settings.jobs[job.name].max,
-				);
-				const kittensInJob = job.value;
-				if (
-					kittensInJob < maxKittensInJob &&
-					kittensInJob < maxKittensToAssign
-				) {
-					jobsNotCapped.push({
-						count: kittensInJob,
-						job,
-						toCap: maxKittensInJob - kittensInJob,
-					});
-				}
+		// Safety net: a village without a single farmer starves. Force one kitten into the
+		// farmer job whenever it is unlocked and empty -- even when the job is disabled in
+		// the settings, or the configured maximum would otherwise keep it at zero.
+		const farmerJob = this._host.game.village.getJob("farmer");
+		if (farmerJob?.unlocked && 0 >= farmerJob.value && 0 < remaining) {
+			const farmerRoom =
+				this._host.game.village.getJobLimit("farmer") - farmerJob.value;
+			if (0 < farmerRoom) {
+				this._host.game.village.assignJob(farmerJob, 1);
+				remaining -= 1;
+				assigned += 1;
+				forcedFarmer = true;
+			}
+		}
+
+		// Assigning one kitten at a time is quadratic: every `assignJob` call rescans and
+		// re-sorts the entire kitten list and rebuilds the village tab. With tens of
+		// thousands of jobless kittens that locks up the main thread, so plan the whole
+		// distribution first and let the game apply it in bulk.
+		const plans = new Array<{ job: UnsafeJob; count: number; room: number }>();
+		for (const job of this._host.game.village.jobs) {
+			// Skip disabled jobs and those that haven't been unlocked;
+			if (!this.settings.jobs[job.name].enabled || !job.unlocked) {
+				continue;
 			}
 
-			if (!jobsNotCapped.length) {
+			const maxKittensInJob = this._host.game.village.getJobLimit(job.name);
+			const maxKittensToAssign = negativeOneToInfinity(
+				this.settings.jobs[job.name].max,
+			);
+			const room = Math.min(maxKittensInJob, maxKittensToAssign) - job.value;
+			if (0 < room) {
+				plans.push({ count: job.value, job, room });
+			}
+		}
+
+		const roomBefore = new Map<UnsafeJob, number>(
+			plans.map((plan) => [plan.job, plan.room] as const),
+		);
+
+		const report = () => {
+			if (0 >= assigned) {
 				return;
 			}
-
-			// Check if we _could_ assign farmers _and_ currently don't have any assigned.
-			// The idea here is, don't assign any kittens into jobs without having filled
-			// that single open farmer position first. This might prevent kitten death in
-			// certain scenarios.
-			const noFarmersAssigned = !isNil(
-				jobsNotCapped.find(
-					(job) => job.job.name === "farmer" && job.count === 0,
-				),
-			);
-
-			// Find the job with the least kittens assigned and assign a kitten to that job.
-			jobsNotCapped.sort((a, b) => a.count - b.count);
-			const jobName = noFarmersAssigned ? "farmer" : jobsNotCapped[0].job.name;
-
-			this._host.game.village.assignJob(
-				this._host.game.village.getJob(jobName),
-				1,
-			);
 			context.requestGameUiRefresh = true;
-			this._host.engine.iactivity(
-				"kittens.distribute",
-				"act.kittens.distribute",
-				[this._host.engine.i18n(`$village.job.${jobName}` as const)],
-			);
+			for (const plan of plans) {
+				const amount = (roomBefore.get(plan.job) ?? 0) - plan.room;
+				if (0 >= amount) {
+					continue;
+				}
+				this._host.engine.iactivity(
+					"kittens.distribute",
+					"act.kittens.distributeBulk",
+					[
+						String(amount),
+						this._host.engine.i18n(`$village.job.${plan.job.name}` as const),
+					],
+				);
+			}
+			if (forcedFarmer) {
+				this._host.engine.iactivity(
+					"kittens.distribute",
+					"act.kittens.distributeBulk",
+					["1", this._host.engine.i18n("$village.job.farmer")],
+				);
+			}
+			this._host.engine.storeForSummary("kittens.distribute", assigned);
+		};
+
+		if (!plans.length) {
+			report();
+			return;
 		}
-		this._host.engine.storeForSummary("kittens.distribute", freeKittens);
+
+		const distribute = (
+			plan: { job: UnsafeJob; room: number },
+			requested: number,
+		) => {
+			const amount = Math.min(plan.room, requested, remaining);
+			if (0 >= amount) {
+				return;
+			}
+			this._host.game.village.assignJob(plan.job, amount);
+			plan.room -= amount;
+			remaining -= amount;
+			assigned += amount;
+		};
+
+		// Fill the jobs with the fewest kittens first, matching the old behavior of always
+		// picking the least populated job, but in a handful of calls instead of one per
+		// kitten.
+		plans.sort((a, b) => a.count - b.count);
+		for (let index = 0; index < plans.length && 0 < remaining; ++index) {
+			const plan = plans[index];
+			if (0 >= plan.room) {
+				continue;
+			}
+			distribute(plan, Math.ceil(remaining / (plans.length - index)));
+		}
+
+		report();
 	}
 
 	autoElect(): void {

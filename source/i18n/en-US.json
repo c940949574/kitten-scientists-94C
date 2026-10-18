@@ -15,6 +15,7 @@
 	"act.feedElders": "Kittens fed the elders. The elders are pleased",
 	"act.hunt": "Sent kittens on {0} hunts",
 	"act.kittens.distribute": "Assigned a kitten to {0}",
+	"act.kittens.distributeBulk": "Assigned {0} kittens to {1}",
 	"act.kittens.promote": "Kittens have been promoted",
 	"act.leader.elect": "Kittens have elected a new leader",
 	"act.leader.promote": "Kittens' leader has been promoted to rank {0}",

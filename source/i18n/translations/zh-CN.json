@@ -15,6 +15,7 @@
 	"act.feedElders": "小猫喂养了上古神，上古神很满意",
 	"act.hunt": "派出 {0} 波小猫去狩猎",
 	"act.kittens.distribute": "已分配一只小猫担任 {0}",
+	"act.kittens.distributeBulk": "已分配 {0} 只小猫担任 {1}",
 	"act.kittens.promote": "小猫已提拔",
 	"act.leader.elect": "小猫选举了新的领袖",
 	"act.leader.promote": "小猫的领袖已提拔至 {0} 级",
