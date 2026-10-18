@@ -20,6 +20,31 @@ import {
 import type { ShatterTCBtnController } from "./types/time.js";
 import type { WorkshopManager } from "./WorkshopManager.js";
 
+/**
+ * Skips larger than this many years are handed to the game's cycle-grouped shatter
+ * implementation. The regular one walks every single year to award resources, advance
+ * space routes and run the AI apocalypse math, so it is linear in the amount and locks
+ * the tab up for minutes once a skip reaches the tens of millions.
+ */
+const BULK_SHATTER_THRESHOLD = 5e7;
+
+/**
+ * A single shatter costs roughly the same no matter how many years it skips, so the
+ * only way to keep the tab responsive is to space the calls out once they get expensive.
+ * These thresholds are wall-clock durations of one shatter call.
+ */
+const SHATTER_NOTICEABLE_MS = 120;
+const SHATTER_SLOW_MS = 250;
+const SHATTER_COOLDOWN_MS = 2_000;
+const SHATTER_SLOW_COOLDOWN_MS = 4_000;
+
+/**
+ * Upper bound for one skip when the configuration leaves the amount unbounded. The
+ * per-call cost of shattering is constant, so this only limits how far the calendar
+ * jumps in one frame, never how much work a frame does.
+ */
+const MAX_YEARS_PER_SKIP = 1e9;
+
 export class TimeControlManager {
 	private readonly _host: KittenScientists;
 	readonly settings: TimeControlSettings;
@@ -40,6 +65,14 @@ export class TimeControlManager {
 	 */
 	private _reportedTemporalFluxMaximum: number | null = null;
 
+	/**
+	 * Epoch milliseconds before which no further shatter may run.
+	 *
+	 * Set after every shatter that took a noticeable part of a frame, so consecutive
+	 * expensive skips don't stack up into a freeze.
+	 */
+	private _nextShatterAt = 0;
+
 	constructor(
 		host: KittenScientists,
 		_bonfireManager: BonfireManager,
@@ -54,7 +87,7 @@ export class TimeControlManager {
 		this._workshopManager = workshopManager;
 	}
 
-	async tick(_context: FrameContext) {
+	async tick(context: FrameContext) {
 		// The maximum temporal flux storage is shown by the acquisition settings,
 		// but the user interface is only refreshed on demand. Refresh it whenever
 		// the value changed, so the settings don't keep showing a stale maximum.
@@ -84,7 +117,7 @@ export class TimeControlManager {
 			this.accelerateTime();
 		}
 		if (this.settings.timeSkip.enabled) {
-			this.timeSkip();
+			this.timeSkip(context);
 		}
 		// Replenishing temporal flux is an action of its own, so it runs even when
 		// regular time skipping is switched off.
@@ -390,7 +423,7 @@ export class TimeControlManager {
 		}
 	}
 
-	timeSkip() {
+	timeSkip(context: FrameContext) {
 		if (!this._host.game.workshop.get("chronoforge").researched) {
 			return;
 		}
@@ -552,6 +585,16 @@ export class TimeControlManager {
 			),
 		);
 
+		// "Unlimited" plus "ignore overheat" makes every term unbounded, and a resource
+		// count can be astronomically large, so an uncapped skip value can jump the
+		// calendar into nonsense in a single frame. Cap it; the cost of one shatter does
+		// not depend on the amount, so this only limits the jump distance.
+		if (!Number.isFinite(canSkip)) {
+			canSkip = MAX_YEARS_PER_SKIP;
+		} else {
+			canSkip = Math.min(canSkip, MAX_YEARS_PER_SKIP);
+		}
+
 		// The amount of skips to perform.
 		let willSkip = 0;
 
@@ -568,6 +611,23 @@ export class TimeControlManager {
 			willSkip += remainingYearsCurrentCycle;
 			canSkip -= remainingYearsCurrentCycle;
 			let skipCycles = 1;
+			// Walking cycle by cycle is linear in the amount skipped: at 5e8 years with
+			// ten years per cycle this loop alone ran 50 million times and blocked the tab
+			// for well over a second. When every cycle may be skipped, whole eras can be
+			// added in one multiplication and the loop below only handles the remainder.
+			const allCyclesEnabled = Cycles.every(
+				(cycle) => this.settings.timeSkip.cycles[cycle].enabled,
+			);
+			if (allCyclesEnabled) {
+				const yearsPerEra = yearsPerCycle * cyclesPerEra;
+				// The loop condition below is strict, so keep at least one year for it.
+				const fullEras = Math.floor((canSkip - 1) / yearsPerEra);
+				if (0 < fullEras) {
+					willSkip += fullEras * yearsPerEra;
+					canSkip -= fullEras * yearsPerEra;
+					skipCycles += fullEras * cyclesPerEra;
+				}
+			}
 			while (
 				yearsPerCycle < canSkip &&
 				this.settings.timeSkip.cycles[
@@ -589,11 +649,48 @@ export class TimeControlManager {
 		}
 		// If we found we can skip any years, do so now.
 		if (0 < willSkip) {
+			// The previous skip was expensive; give the tab a moment before the next one.
+			if (Date.now() < this._nextShatterAt) {
+				return;
+			}
+
 			const controller = new classes.ui.time.ShatterTCBtnController(
 				this._host.game,
 			) as ShatterTCBtnController;
 			const model = controller.fetchModel({});
-			controller.doShatterAmt(model, willSkip);
+
+			// The game picks its per-year loop unless `testShatter` is set; flip it for a
+			// single call so huge skips go through the cycle-grouped path instead.
+			const timeManager = this._host.game.time as unknown as {
+				testShatter?: number;
+			};
+			const useBulkShatter = BULK_SHATTER_THRESHOLD < willSkip;
+			const previousTestShatter = timeManager.testShatter;
+			if (useBulkShatter) {
+				timeManager.testShatter = 1;
+			}
+			const startedAt = performance.now();
+			try {
+				controller.doShatterAmt(model, willSkip);
+			} finally {
+				if (useBulkShatter) {
+					timeManager.testShatter = previousTestShatter;
+				}
+			}
+			const elapsed = performance.now() - startedAt;
+
+			// One shatter is a fixed cost, so the only lever is spacing them out. Also
+			// drop the interface repaint for this frame: stacking it on an already long
+			// frame is what turns a hitch into a visible stall.
+			if (elapsed > SHATTER_SLOW_MS) {
+				this._nextShatterAt = Date.now() + SHATTER_SLOW_COOLDOWN_MS;
+			} else if (elapsed > SHATTER_NOTICEABLE_MS) {
+				this._nextShatterAt = Date.now() + SHATTER_COOLDOWN_MS;
+			}
+			if (elapsed > SHATTER_NOTICEABLE_MS) {
+				context.requestGameUiRefresh = false;
+			}
+
 			this._host.engine.iactivity("time.skip", "act.time.skip", [willSkip]);
 			this._host.engine.storeForSummary("time.skip", willSkip);
 		}

@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { defineConfig } from "vite";
 import { metablock } from "vite-plugin-userscript";
 import manifest from "./package.json" with { type: "json" };
+import { buildVersion } from "./build-version.js";
 
 const filenameUserscript = "kitten-scientists.user.js";
 const filenameMeta = "kitten-scientists.meta.js";
@@ -47,9 +48,7 @@ export default defineConfig({
 				downloadURL,
 				homepageURL: manifest.homepage,
 				updateURL: metaURL,
-				version: process.env.RELEASE_VERSION
-					? process.env.RELEASE_VERSION
-					: manifest.version,
+				version: buildVersion,
 			},
 		}),
 	],

@@ -1,13 +1,11 @@
 import { defineConfig } from "vite";
 import cssInjectedByJsPlugin from "vite-plugin-css-injected-by-js";
-import manifest from "./package.json" with { type: "json" };
+import { buildVersion } from "./build-version.js";
 
 const filename = "kitten-scientists.inject.js";
 
 const RELEASE_CHANNEL = JSON.stringify(process.env.RELEASE_CHANNEL ?? "fixed");
-const RELEASE_VERSION = JSON.stringify(
-	process.env.RELEASE_VERSION ?? `${manifest.version}-unstable`,
-);
+const RELEASE_VERSION = JSON.stringify(buildVersion);
 
 export default defineConfig({
 	build: {
