@@ -7,6 +7,12 @@ import manifest from "./package.json" with { type: "json" };
 const HOURS = "ABCDEFGHJKLMNPQRSTUVWXYZ";
 const SLOTS = "0123456789XY";
 
+/**
+ * ISO-8601 week number of a date (weeks start on Monday, week 1 contains the first
+ * Thursday of the year).
+ * @param {Date} date
+ * @returns {number}
+ */
 function isoWeek(date) {
 	const target = new Date(
 		Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()),
@@ -15,14 +21,14 @@ function isoWeek(date) {
 	target.setUTCDate(target.getUTCDate() - weekday + 3);
 	const firstThursday = new Date(Date.UTC(target.getUTCFullYear(), 0, 4));
 	const firstWeekday = (firstThursday.getUTCDay() + 6) % 7;
-	return (
-		1 +
-		Math.round(
-			((target - firstThursday) / 86400000 - 3 + firstWeekday) / 7,
-		)
-	);
+	const diffDays = (target.getTime() - firstThursday.getTime()) / 86400000;
+	return 1 + Math.round((diffDays - 3 + firstWeekday) / 7);
 }
 
+/**
+ * @param {Date} [date]
+ * @returns {string}
+ */
 export function isoTag(date = new Date()) {
 	const yy = String(date.getFullYear()).slice(-2);
 	const ww = String(isoWeek(date)).padStart(2, "0");
